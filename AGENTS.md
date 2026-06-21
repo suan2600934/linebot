@@ -130,13 +130,67 @@
 - [ ] 測試各種問句理解
 
 ### 優先級 4：部署準備
-- [ ] 建立 GitHub 倉庫
-- [ ] 推送程式碼到 GitHub
-- [ ] 申請 Supabase 專案
-- [ ] 執行 `database/schema.sql` 建立資料表
-- [ ] 部署到 Zeabur
-- [ ] 設定正式環境變數
-- [ ] 測試正式環境功能
+- [x] 建立 GitHub 倉庫
+- [x] 推送程式碼到 GitHub
+- [x] 申請 Supabase 專案
+- [x] 執行 `database/schema.sql` 建立資料表
+- [x] 部署到 Zeabur
+- [x] 設定正式環境變數
+- [x] 測試正式環境功能
+
+### 優先級 5：Supabase 動態讀取優化
+- [ ] `getClinicPharmacyInfo()` → 從 Supabase clinics 表讀取
+- [ ] `getHealthExam()` → 從 Supabase services 表讀取
+- [ ] `getChildVaccine()` → 從 Supabase services 表讀取
+- [ ] `getHoursInfo()` → 從 Supabase clinics 表讀取
+- [ ] 測試所有動態讀取功能正常
+
+### 優先級 6：即時看診查詢功能
+
+#### 功能說明
+- 在 Rich Menu 新增「看診進度查詢」按鈕
+- 讓民眾即時查詢「現在看到幾號」、「等候人數」
+
+#### 系統架構
+```
+temp_new.dbf → Python 腳本(定時) → Supabase queue_status 表格 → LINE Bot 讀取
+                      ↑
+               診所電腦執行
+```
+
+#### 診所電腦配合事項
+1. **軟體需求**
+   - Python 3
+   - 網路可訪問 Supabase
+
+2. **上傳方式**
+   - 讀取 `temp_new.dbf`（固定路徑）
+   - 每 3-5 分鐘上傳一次到 Supabase
+   - 使用 Python + `dbfread` 套件
+
+3. **電源/網路**
+   - 看診時段電腦需開機
+   - 網路保持連線
+
+#### Supabase 資料表設計（初步）
+```sql
+CREATE TABLE queue_status (
+  id SERIAL PRIMARY KEY,
+  current_number INT,        -- 目前看診號
+  waiting_count INT,         -- 等候人數
+  doctor_name TEXT,          -- 醫師名
+  shift_type TEXT,           -- 早診/午診/晚診
+  last_updated TIMESTAMP     -- 更新時間
+);
+```
+
+#### 待完成項目
+- [ ] 確認 `temp_new.dbf` 欄位
+- [ ] 建立 `queue_status` 資料表
+- [ ] 設計 Python 上傳腳本
+- [ ] 設定排程（每 3-5 分鐘執行）
+- [ ] LINE Bot 新增查詢功能
+- [ ] Rich Menu 新增按鈕
 
 ---
 
@@ -782,4 +836,4 @@ try {
 ---
 
 **最後更新**：2026-06-21
-**狀態**：LINE Bot 正式上線 Zeabur
+**狀態**：LINE Bot 正式上線，規劃即時看診查詢功能
