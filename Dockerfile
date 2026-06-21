@@ -1,4 +1,4 @@
-FROM node:18-alpine
+FROM node:22-alpine
 
 RUN apk add --update python3 make g++ cairo-dev jpeg-dev libpng-dev giflib-dev pango-dev
 
