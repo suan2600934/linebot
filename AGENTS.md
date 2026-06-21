@@ -688,3 +688,98 @@ https://kbpyxboleoefwvdnjcod.supabase.co/storage/v1/object/public/images/
 
 **最後更新**：2026-06-20
 **狀態**：資料全面雲端化，支援動態更新
+
+---
+
+## 📅 2026-06-21 工作進度
+
+### ✅ GitHub 倉庫建立
+
+#### 建立過程
+1. 在 GitHub 建立 `suan2600934/linebot` 倉庫
+2. 初始化 git 並推送程式碼
+3. 設定 `.gitignore` 排除 `node_modules` 和 `.env`
+
+### ✅ Zeabur 部署
+
+#### 部署過程
+1. 在 Zeabur 建立新專案，連接到 GitHub
+2. 解決多個部署問題：
+   - Dockerfile 修改：使用 `node:22-alpine`
+   - 安裝 canvas 所需的系統套件（`cairo-dev` 等）
+   - 安裝 `ws` 套件解決 Node.js WebSocket 問題
+   - 修改 `index.js` 固定監聽 port 3000
+
+#### 環境變數設定（Zeabur）
+```env
+PORT=3000
+LINE_CHANNEL_SECRET=545e896c26589cdbc6ad52721cff6c6c
+LINE_CHANNEL_ACCESS_TOKEN=BNCxP6KMC+9Ak7IoTUxRoLebxYUSpsf7CksgxqXvmwn...
+SUPABASE_URL=https://kbpyxboleoefwvdnjcod.supabase.co
+SUPABASE_SERVICE_KEY=eyJhbGci...
+NIM_API_URL=https://integrate.api.nvidia.com/v1
+NIM_API_KEY=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
+```
+
+#### Docker 最終內容
+```dockerfile
+FROM node:22-alpine
+RUN apk add --update python3 make g++ cairo-dev jpeg-dev libpng-dev giflib-dev pango-dev
+WORKDIR /app
+COPY package*.json ./
+RUN npm install --ignore-scripts
+COPY . .
+EXPOSE 3000
+CMD ["node", "index.js"]
+```
+
+### ✅ index.js 最終修改
+
+#### PORT 設定
+```javascript
+const PORT = 3000;  // 固定使用 3000，不理會環境變數
+app.listen(Number(PORT), '0.0.0.0', () => {
+```
+
+#### WebSocket 修補
+```javascript
+// Node.js < 22 的 WebSocket 修補
+try {
+  const WebSocket = require('ws');
+  if (typeof globalThis.WebSocket === 'undefined') {
+    globalThis.WebSocket = WebSocket;
+  }
+} catch (e) {
+  console.log('ws package not found, WebSocket polyfill skipped');
+}
+```
+
+### 📝 LINE Bot 正式上線
+
+#### 網址資訊
+- **LINE Webhook URL**: `https://suanclinic.zeabur.app/webhook`
+- **LINE Bot 名稱**: suanclinic_aibot（賜安診所官方帳號）
+
+#### 部署架構
+```
+使用者 → LINE → Zeabur (執行 index.js:3000) → Supabase (資料+圖片)
+                     ↓
+                GitHub (程式碼備份)
+```
+
+### ⚠️ 重要教訓
+
+1. **PORT 問題**：Zeabur 會強制使用 port 8080，需要在 index.js 中固定監聽 3000
+2. **環境變數**：LINE_CHANNEL_SECRET 和 LINE_CHANNEL_ACCESS_TOKEN 必須設定
+3. **WebSocket**：Node.js < 22 需要 ws 套件或升級到 Node 22
+4. **健康檢查**：使用 HTTP `/health` 端點，不要用 TCP
+
+### 📝 下次工作重點
+1. 確認所有 LINE 功能正常運作
+2. 測試 Rich Menu 按鈕
+3. 更新 LINE Webhook URL（如有變動）
+
+---
+
+**最後更新**：2026-06-21
+**狀態**：LINE Bot 正式上線 Zeabur

@@ -156,7 +156,7 @@ ${knowledgeBase}
           'Authorization': `Bearer ${process.env.NIM_API_KEY}`,
           'Content-Type': 'application/json'
         },
-        timeout: 15000
+        timeout: 30000
       }
     );
 
