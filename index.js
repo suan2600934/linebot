@@ -33,59 +33,14 @@ const messagingApiClient = new line.messagingApi.MessagingApiClient({
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
 });
 
-// 從 Supabase 載入知識庫
+// 從 GitHub 載入知識庫
 async function loadKnowledgeBase() {
   try {
-    const { data: clinic } = await supabase.from('clinics').select('*').eq('id', 1).single();
-    const { data: doctors } = await supabase.from('doctors').select('*');
-    const { data: services } = await supabase.from('services').select('*');
-    const { data: pharmacies } = await supabase.from('pharmacies').select('*');
-
-    let kb = '';
-
-    if (clinic) {
-      kb += `【診所資訊】
-名稱：${clinic.name}
-電話：${clinic.phone}
-地址：${clinic.address}
-早診：${clinic.hours_morning}
-午診：${clinic.hours_afternoon}
-晚診：${clinic.hours_evening}
-服務項目：${clinic.services?.join('、') || ''}
-`;
-    }
-
-    if (doctors && doctors.length > 0) {
-      kb += `\n【醫師團隊】
-`;
-      for (const d of doctors) {
-        kb += `${d.name}（${d.title}）- 專長：${d.specialties?.join('、') || ''}
-`;
-      }
-    }
-
-    if (services && services.length > 0) {
-      kb += `\n【服務項目】
-`;
-      for (const s of services) {
-        kb += `${s.name}：${s.description}
-`;
-      }
-    }
-
-    if (pharmacies && pharmacies.length > 0) {
-      kb += `\n【附近藥局】
-`;
-      for (const p of pharmacies) {
-        kb += `${p.name}
-電話：${p.phone}
-地址：${p.address}
-時間：${p.hours}
-`;
-      }
-    }
-
-    return kb;
+    const response = await axios.get(
+      'https://raw.githubusercontent.com/suan2600934/linebot/master/knowledge-base.md',
+      { timeout: 10000 }
+    );
+    return response.data;
   } catch (error) {
     console.error('載入知識庫失敗:', error.message);
     return '';
