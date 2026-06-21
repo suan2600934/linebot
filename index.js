@@ -7,6 +7,16 @@ const axios = require('axios');
 const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
 
+// Node.js < 22 的 WebSocket 修補
+try {
+  const WebSocket = require('ws');
+  if (typeof globalThis.WebSocket === 'undefined') {
+    globalThis.WebSocket = WebSocket;
+  }
+} catch (e) {
+  console.log('ws package not found, WebSocket polyfill skipped');
+}
+
 // Supabase 客戶端
 const supabase = createClient(
   process.env.SUPABASE_URL || 'https://kbpyxboleoefwvdnjcod.supabase.co',
