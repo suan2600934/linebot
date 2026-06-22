@@ -295,35 +295,50 @@ async function handlePostback(event) {
 
 // 診所藥局資訊
 async function getClinicPharmacyInfo() {
-  return {
-    type: 'text',
-    text: `🏥 【賜安診所】
+  try {
+    const [{ data: clinics, error: cErr }, { data: pharmacies, error: pErr }] = await Promise.all([
+      supabase.from('clinics').select('*').limit(1),
+      supabase.from('pharmacies').select('*').limit(1)
+    ]);
 
-📞 電話：(05) 260-0934
-📍 地址：嘉義縣水上鄉正義路 53 號
+    if (cErr || !clinics || clinics.length === 0) {
+      return { type: 'text', text: '無法取得診所資訊，請稍後再試。' };
+    }
+
+    const c = clinics[0];
+    const servicesText = c.services ? c.services.join('、') : '一般內科、小兒科、耳鼻喉科、皮膚科';
+    const p = pharmacies && pharmacies[0] ? pharmacies[0] : null;
+
+    let text = `🏥 【${c.name}】
+
+📞 電話：${c.phone}
+📍 地址：${c.address}
 
 ⏰ 【門診時間】
-早診 08:00-12:00
-午診 15:00-18:00
-晚診 18:30-20:30
+早診 ${c.hours_morning || '08:00-12:00'}
+午診 ${c.hours_afternoon || '15:00-18:00'}
+晚診 ${c.hours_evening || '18:30-20:30'}
 
 📋 【主治項目】
-一般內科：高血壓、糖尿病、感冒、過敏氣喘、關節炎、痛風
-小兒科：兒童健檢、兒童疫苗、小兒感染症、腸胃科
-耳鼻喉科：一般耳鼻喉疾病
-皮膚科：青春痘、濕疹、過敏、蕁麻疹、香港腳、灰指甲
+${servicesText}`;
 
-💉 【服務】
-超音波檢查、心電圖檢查、成人健檢、兒童健檢、疫苗注射
+    if (p) {
+      text += `
 
 ━━━━━━━━━━━━━━━
 🏪 【附近藥局】
 
-宏益藥局
-📞 電話：05260-1714
-📍 地址：嘉義縣水上鄉正義路 51 號
-⏰ 時間：08:00-12:00 / 15:00-18:00 / 18:30-20:30`
-  };
+${p.name}
+📞 電話：${p.phone}
+📍 地址：${p.address}
+⏰ 時間：${p.hours}`;
+    }
+
+    return { type: 'text', text };
+  } catch (err) {
+    console.error('getClinicPharmacyInfo error:', err);
+    return { type: 'text', text: '取得診所資訊時發生錯誤。' };
+  }
 }
 
 // 醫師介紹（從 Supabase 讀取）
@@ -433,9 +448,16 @@ async function getFullMonthSchedule() {
 
 // 門診時間（詳細版）
 async function getHoursInfo() {
-  return {
-    type: 'text',
-    text: `⏰ 【門診時間】
+  try {
+    const { data: clinics, error } = await supabase
+      .from('clinics')
+      .select('hours_morning, hours_afternoon, hours_evening')
+      .limit(1);
+
+    if (error || !clinics || clinics.length === 0) {
+      return {
+        type: 'text',
+        text: `⏰ 【門診時間】
 
 早診 08:00-12:00
 午診 15:00-18:00
@@ -447,7 +469,43 @@ async function getHoursInfo() {
 • 星期日病患較多，不開放預約
 • 未帶健保卡押單看診，多收300元押金
   （還押單期限：次月6日前）`
-  };
+      };
+    }
+
+    const c = clinics[0];
+    return {
+      type: 'text',
+      text: `⏰ 【門診時間】
+
+早診 ${c.hours_morning || '08:00-12:00'}
+午診 ${c.hours_afternoon || '15:00-18:00'}
+晚診 ${c.hours_evening || '18:30-20:30'}
+
+📌 【注意事項】
+• 請攜帶健保卡
+• 電話預約 (05) 260-0934
+• 星期日病患較多，不開放預約
+• 未帶健保卡押單看診，多收300元押金
+  （還押單期限：次月6日前）`
+    };
+  } catch (err) {
+    console.error('getHoursInfo error:', err);
+    return {
+      type: 'text',
+      text: `⏰ 【門診時間】
+
+早診 08:00-12:00
+午診 15:00-18:00
+晚診 18:30-20:30
+
+📌 【注意事項】
+• 請攜帶健保卡
+• 電話預約 (05) 260-0934
+• 星期日病患較多，不開放預約
+• 未帶健保卡押單看診，多收300元押金
+  （還押單期限：次月6日前）`
+    };
+  }
 }
 
 // 常見問題
@@ -715,34 +773,72 @@ async function searchClinics() {
 
 // 預防保健檢查
 async function getHealthExam() {
-  const imageUrl = STORAGE_URL + '/health_exam.jpg';
-  return [
-    {
-      type: 'text',
-      text: '【預防保健檢查】\n\n提供以下成人健康檢查服務：\n\n✅ 成人健康檢查（30歲以上）\n✅ 免費B型、C型肝炎篩檢\n✅ 大腸癌篩檢\n\n⚠️ 提醒：成人健康檢查由周見成醫師執行，請安排在周醫師門診時段前來。'
-    },
-    {
-      type: 'image',
-      originalContentUrl: imageUrl,
-      previewImageUrl: imageUrl
-    }
-  ];
+  try {
+    const imageUrl = STORAGE_URL + '/health_exam.jpg';
+    const { data: services, error } = await supabase
+      .from('services')
+      .select('name, description')
+      .eq('category', '預防保健');
+
+    const examList = services && services.length > 0
+      ? services.map(s => `• ${s.name}：${s.description}`).join('\n')
+      : '• 成人健康檢查（30歲以上）\n• 免費B型、C型肝炎篩檢\n• 大腸癌篩檢';
+
+    return [
+      {
+        type: 'text',
+        text: `【預防保健檢查】
+
+${examList}
+
+⚠️ 提醒：成人健康檢查由周見成醫師執行，請安排在周醫師門診時段前來。`
+      },
+      {
+        type: 'image',
+        originalContentUrl: imageUrl,
+        previewImageUrl: imageUrl
+      }
+    ];
+  } catch (err) {
+    console.error('getHealthExam error:', err);
+    return { type: 'text', text: '取得健康檢查資訊時發生錯誤。' };
+  }
 }
 
 // 兒童預防注射
 async function getChildVaccine() {
-  const imageUrl = STORAGE_URL + '/child_vaccine.jpg';
-  return [
-    {
-      type: 'text',
-      text: '【兒童預防注射】\n\n提供幼兒疫苗注射服務：\n\n✅ B型肝炎疫苗\n✅ 五合一疫苗\n✅ 肺炎鏈球菌疫苗\n✅ 卡介苗\n✅ 水痘疫苗\n✅ 麻疹腮腺炎德國麻疹疫苗\n\n💉 請攜帶兒童健康手冊，電話預約 (05) 260-0934\n\n⚠️ 提醒：兒童預防注射由周見成醫師執行，請家長安排在周醫師門診時段帶小朋友前來。'
-    },
-    {
-      type: 'image',
-      originalContentUrl: imageUrl,
-      previewImageUrl: imageUrl
-    }
-  ];
+  try {
+    const imageUrl = STORAGE_URL + '/child_vaccine.jpg';
+    const { data: services, error } = await supabase
+      .from('services')
+      .select('name, description')
+      .in('category', ['兒童健康', '疫苗']);
+
+    const vaccineList = services && services.length > 0
+      ? services.map(s => `• ${s.name}：${s.description}`).join('\n')
+      : '• B型肝炎疫苗\n• 五合一疫苗\n• 肺炎鏈球菌疫苗\n• 流感疫苗';
+
+    return [
+      {
+        type: 'text',
+        text: `【兒童預防注射】
+
+${vaccineList}
+
+💉 請攜帶兒童健康手冊，電話預約 (05) 260-0934
+
+⚠️ 提醒：兒童預防注射由周見成醫師執行，請家長安排在周醫師門診時段帶小朋友前來。`
+      },
+      {
+        type: 'image',
+        originalContentUrl: imageUrl,
+        previewImageUrl: imageUrl
+      }
+    ];
+  } catch (err) {
+    console.error('getChildVaccine error:', err);
+    return { type: 'text', text: '取得兒童疫苗資訊時發生錯誤。' };
+  }
 }
 
 // 看診進度查詢
