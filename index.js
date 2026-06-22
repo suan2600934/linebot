@@ -915,7 +915,7 @@ app.get('/images/:filename', (req, res) => {
 });
 
 // 啟動伺服器
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 app.listen(Number(PORT), '0.0.0.0', () => {
   console.log(`🚀 LINE Bot 伺服器已啟動，監聽端口 ${PORT}`);
 });
