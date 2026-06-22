@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS knowledge_base (
+    id SERIAL PRIMARY KEY,
+    content TEXT NOT NULL DEFAULT '',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO knowledge_base (content) VALUES ('')
+ON CONFLICT DO NOTHING;

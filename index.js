@@ -36,16 +36,46 @@ const messagingApiClient = new line.messagingApi.MessagingApiClient({
 // 從 GitHub 載入知識庫
 async function loadKnowledgeBase() {
   try {
-    const response = await axios.get(
-      'https://raw.githubusercontent.com/suan2600934/linebot/master/knowledge-base.md',
-      { timeout: 10000 }
-    );
-    return response.data;
+    const { data, error } = await supabase
+      .from('knowledge_base')
+      .select('content')
+      .limit(1)
+      .single();
+
+    if (error || !data || !data.content) {
+      console.error('載入知識庫失敗:', error?.message);
+      return '';
+    }
+
+    return data.content;
   } catch (error) {
     console.error('載入知識庫失敗:', error.message);
     return '';
   }
 }
+
+async function syncKnowledgeBase(filePath = './knowledge-base.md') {
+  const fs = require('fs');
+  try {
+    const content = fs.readFileSync(filePath, 'utf8');
+    const { error } = await supabase
+      .from('knowledge_base')
+      .upsert({ id: 1, content, updated_at: new Date().toISOString() }, { onConflict: 'id' });
+
+    if (error) {
+      console.error('同步知識庫失敗:', error.message);
+      return false;
+    }
+    console.log('知識庫已同步到 Supabase');
+    return true;
+  } catch (err) {
+    console.error('同步知識庫失敗:', err.message);
+    return false;
+  }
+}
+
+// 初始化知識庫（正式環境不自動執行，僅開機時讀取）
+// 若需更新，請呼叫 syncKnowledgeBase()
 
 // NVIDIA NIM AI 回覆
 async function callNIM(userMessage) {
