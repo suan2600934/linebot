@@ -210,13 +210,24 @@ app.post('/webhook', async (req, res) => {
     
     for (const event of events) {
       console.log('處理事件類型:', event.type);
-      
-      if (event.type === 'message' && event.message.type === 'text') {
-        await handleTextMessage(event);
-      } else if (event.type === 'postback') {
-        await handlePostback(event);
-      } else if (event.type === 'follow') {
-        await handleFollow(event);
+
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Webhook timeout (25s)')), 25000);
+      });
+
+      try {
+        await Promise.race([
+          event.type === 'message' && event.message.type === 'text'
+            ? handleTextMessage(event)
+            : event.type === 'postback'
+            ? handlePostback(event)
+            : event.type === 'follow'
+            ? handleFollow(event)
+            : Promise.resolve(),
+          timeoutPromise
+        ]);
+      } catch (err) {
+        console.error('事件處理錯誤:', err.message);
       }
     }
     
