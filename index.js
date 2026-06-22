@@ -238,6 +238,10 @@ async function handleTextMessage(event) {
   else if (text.includes('藥局') || text.includes('診所')) {
     replyMessage = await handleKeywordSearch(text);
   }
+  // 看診進度關鍵字
+  else if (text.includes('看診') || text.includes('進度') || text.includes('等候') || text.includes('現在看到')) {
+    replyMessage = await getQueueStatus();
+  }
   // AI 回覆（所有未匹配的訊息）
   else {
     replyMessage = await callNIM(text);
@@ -277,6 +281,8 @@ async function handlePostback(event) {
     replyMessage = await getHealthExam();
   } else if (data === 'action=child_vaccine') {
     replyMessage = await getChildVaccine();
+  } else if (data === 'action=queue_status') {
+    replyMessage = await getQueueStatus();
   }
 
   await messagingApiClient.replyMessage({
@@ -352,24 +358,54 @@ ${d.education ? `學歷：${d.education}\n` : ''}${d.experience ? `經歷：\n${
 }
 
 // 醫師門診表（當月）
+function getWeekNumber(date) {
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const firstWeekday = firstDay.getDay();
+  const dayOfMonth = date.getDate();
+  return Math.ceil((dayOfMonth + firstWeekday) / 7);
+}
+
+function getWeekDateRange(year, month, weekNum) {
+  const firstDay = new Date(year, month - 1, 1);
+  const firstWeekday = firstDay.getDay();
+  const startDate = 1 + (weekNum - 1) * 7 - firstWeekday;
+  const endDate = startDate + 6;
+  const start = new Date(year, month - 1, Math.max(1, startDate));
+  const end = new Date(year, month - 1, Math.min(new Date(year, month, 0).getDate(), endDate));
+  const fmt = d => `${d.getMonth() + 1}/${d.getDate()}`;
+  return `${fmt(start)}-${fmt(end)}`;
+}
+
 async function getSchedule() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const weekNum = getWeekNumber(now);
+  const weekRange = getWeekDateRange(year, month, weekNum);
   return {
     type: 'text',
-    text: `【115年6月門診班表】
+    text: `【${year}年${month}月門診班表】
 
 請問您要查詢：
-1️⃣ 本週門診表（6/15-6/21）
-2️⃣ 完整月份班表（6/1-6/30）`
+1️⃣ 本週門診表（${weekRange}）
+2️⃣ 完整月份班表（${month}/1-${month}/${new Date(year, month, 0).getDate()}）`
   };
 }
 
 // 本週門診表
 async function getThisWeekSchedule() {
-  const imageUrl = STORAGE_URL + '/schedule-week3.png';
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const weekNum = getWeekNumber(now);
+  const weekRange = getWeekDateRange(year, month, weekNum);
+  const imageUrl = STORAGE_URL + `/schedule-week${weekNum}.png`;
   return [
     {
       type: 'text',
-      text: '【本週門診表】(6/15-6/21)\n\n如圖所示，輸入 2 可查看完整月份班表'
+      text: `【本週門診表】(${weekRange})\n\n如圖所示，輸入 2 可查看完整月份班表`
     },
     {
       type: 'image',
@@ -707,6 +743,30 @@ async function getChildVaccine() {
       previewImageUrl: imageUrl
     }
   ];
+}
+
+// 看診進度查詢
+async function getQueueStatus() {
+  const { data, error } = await supabase
+    .from('queue_status')
+    .select('*')
+    .order('id', { ascending: false })
+    .limit(1);
+
+  if (error || !data || data.length === 0) {
+    return {
+      type: 'text',
+      text: '【看診進度查詢】\n\n目前無看診資料\n\n可能原因：\n• 非門診時段\n• 系統尚未更新\n\n請於門診時段再来查詢，或致電詢問： (05) 260-0934'
+    };
+  }
+
+  const q = data[0];
+  const status = q.current_number > 0 ? `已看到 ${q.current_number} 號` : '尚未開診';
+
+  return {
+    type: 'text',
+    text: `【看診進度查詢】\n\n醫師：${q.doctor_name || '周見成'}\n診間：${q.roomn || '內科'}\n${status}\n等候人數：${q.wait_count || 0} 人\n\n最後更新：${q.last_updated ? new Date(q.last_updated).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' }) : '-'}\n\n⚠️ 僅供參考，實際以診所現場為準`
+  };
 }
 
 // 健康檢查
