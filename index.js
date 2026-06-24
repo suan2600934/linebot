@@ -453,15 +453,23 @@ async function getSchedule() {
 // 本週門診表
 async function getThisWeekSchedule() {
   const now = new Date();
+  const weekNum = getWeekNumber(now);
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
-  const weekNum = getWeekNumber(now);
-  const weekRange = getWeekDateRange(year, month, weekNum);
   const imageUrl = STORAGE_URL + `/schedule-week${weekNum}.png`;
+
+  const { data, error } = await supabase
+    .from('schedules')
+    .select('week_content')
+    .match({ year, month, week_number: weekNum })
+    .single();
+
+  const content = data?.week_content || '目前無法取得班表資訊';
+
   return [
     {
       type: 'text',
-      text: `【本週門診表】(${weekRange})\n\n如圖所示，輸入 2 可查看完整月份班表`
+      text: `【本週門診表】\n\n${content}\n\n如圖所示，輸入 2 可查看完整月份班表`
     },
     {
       type: 'image',
