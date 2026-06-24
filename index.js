@@ -275,10 +275,6 @@ async function handleTextMessage(event) {
   else if (text.includes('附近') || text.includes('哪裡') || text.includes('推薦')) {
     replyMessage = await handleAIQuery(text);
   }
-  // 關鍵字匹配
-  else if (text.includes('藥局') || text.includes('診所')) {
-    replyMessage = await handleKeywordSearch(text);
-  }
   // 看診進度關鍵字
   else if (
     (text.includes('看診') && (text.includes('進度') || text.includes('等候') || text.includes('現在看到') || text.includes('查詢'))) ||
@@ -317,10 +313,6 @@ async function handlePostback(event) {
     replyMessage = await getHoursInfo();
   } else if (data === 'action=faq') {
     replyMessage = await getFaq();
-  } else if (data === 'search_pharmacy') {
-    replyMessage = await searchPharmacies();
-  } else if (data === 'search_clinic') {
-    replyMessage = await searchClinics();
   } else if (data === 'action=health_exam') {
     replyMessage = await getHealthExam();
   } else if (data === 'action=child_vaccine') {
@@ -453,24 +445,12 @@ async function getSchedule() {
 
 // 本週門診表
 async function getThisWeekSchedule() {
-  const now = new Date();
-  const weekNum = getWeekNumber(now);
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1;
+  const weekNum = getWeekNumber(new Date());
   const imageUrl = STORAGE_URL + `/schedule-week${weekNum}.png`;
-
-  const { data, error } = await supabase
-    .from('schedules')
-    .select('week_content')
-    .match({ year, month, week_number: weekNum })
-    .single();
-
-  const content = data?.week_content || '目前無法取得班表資訊';
-
   return [
     {
       type: 'text',
-      text: `【本週門診表】\n\n${content}\n\n如圖所示，輸入 2 可查看完整月份班表`
+      text: '【本週門診表】\n\n如圖所示，輸入 2 可查看完整月份班表'
     },
     {
       type: 'image',
@@ -794,30 +774,19 @@ async function handleDoctorQuery(text) {
   }
 }
 
-// 關鍵字搜尋
-async function handleKeywordSearch(text) {
-  // TODO: 實作資料庫搜尋
-  return {
-    type: 'text',
-    text: `搜尋關鍵字：${text}\n\n目前系統正在測試中，稍後將提供完整搜尋功能！`
-  };
-}
-
-// 搜尋藥局
+// 搜尋藥局（已有知識庫，此函式保留備用）
 async function searchPharmacies() {
-  // TODO: 從資料庫查詢
   return {
     type: 'text',
-    text: '藥局清單（測試中）\n\n宏益藥局\n地址：嘉義縣水上鄉正義路 51 號\n電話：0928-532519'
+    text: '請輸入想查詢的問題，我來幫您回答！'
   };
 }
 
-// 搜尋診所
+// 搜尋診所（已有知識庫，此函式保留備用）
 async function searchClinics() {
-  // TODO: 從資料庫查詢
   return {
     type: 'text',
-    text: '診所清單（測試中）\n\n賜安診所\n地址：嘉義縣水上鄉正義路 53 號\n電話：05-2600934'
+    text: '請輸入想查詢的問題，我來幫您回答！'
   };
 }
 
