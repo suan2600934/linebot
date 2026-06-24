@@ -438,14 +438,12 @@ async function getSchedule() {
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
-  const weekNum = getWeekNumber(now);
-  const weekRange = getWeekDateRange(year, month, weekNum);
   return {
     type: 'text',
     text: `【${year}年${month}月門診班表】
 
 請問您要查詢：
-1️⃣ 本週門診表（${weekRange}）
+1️⃣ 本週門診表
 2️⃣ 完整月份班表（${month}/1-${month}/${new Date(year, month, 0).getDate()}）`
   };
 }
