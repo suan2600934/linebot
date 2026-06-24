@@ -280,7 +280,10 @@ async function handleTextMessage(event) {
     replyMessage = await handleKeywordSearch(text);
   }
   // 看診進度關鍵字
-  else if (text.includes('看診') || text.includes('進度') || text.includes('等候') || text.includes('現在看到')) {
+  else if (
+    (text.includes('看診') && (text.includes('進度') || text.includes('等候') || text.includes('現在看到') || text.includes('查詢'))) ||
+    text.includes('看診進度') || text.includes('看診查詢') || text.includes('現在看到') || text.includes('排看診') || text.includes('等候人數')
+  ) {
     replyMessage = await getQueueStatus();
   }
   // AI 回覆（所有未匹配的訊息）
