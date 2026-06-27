@@ -1,0 +1,5 @@
+# 敏感資料（不上傳）
+patdb.dbf
+patdb.docx
+*.dbf
+*.dby
