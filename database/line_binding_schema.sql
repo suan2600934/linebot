@@ -1,10 +1,11 @@
 -- ============================================
--- LINE 帳號綁定系統 — 驗證碼方案（V1 MVP，定版 v1.3）
+-- LINE 帳號綁定系統 — 驗證碼方案（V1 MVP，定版 v1.4）
 -- 建立日期：2026-06-27
 -- 更新紀錄：
 --   v1.1: 補強解綁機制、key_version、CHECK約束、updated_at trigger、archive表
 --   v1.2: pending_links改名為verification_codes；新增line_user_links_history；
 --         修正recno_hash/user_id_hash注解，強調HMAC（非純SHA256）
+--   v1.4: code_hash 全面改用 HMAC-SHA256（與 recno_hash / user_id_hash 一致）
 -- ============================================
 
 -- ============================================
@@ -14,10 +15,10 @@
 -- ============================================
 CREATE TABLE IF NOT EXISTS verification_codes (
   id              BIGSERIAL PRIMARY KEY,
-  code_hash       TEXT NOT NULL,                     -- SHA256(6位驗證碼)，不存明碼
+  code_hash       TEXT NOT NULL,                     -- HMAC-SHA256(6位驗證碼, APP_KEY)，不存明碼（防彩虹表）
   recno_encrypted TEXT NOT NULL,                     -- AES-256-GCM 加密recno（格式：iv:encrypted:authTag）
-  recno_hash      TEXT NOT NULL,                     -- HMAC-SHA256(recno, RECNO_HMAC_SECRET)，查詢索引
-                                                        -- ⚠️ RECNO_HMAC_SECRET必須與AES加密金鑰分開管理。
+  recno_hash      TEXT NOT NULL,                     -- HMAC-SHA256(recno, APP_KEY)，查詢索引
+                                                        -- ⚠️ APP_KEY 必須與 AES 金鑰分開管理。
                                                         --    病歷號僅6位數(100萬種組合)，若用純SHA256，
                                                         --    攻擊者可離線窮舉全部病歷號建立對照表；
                                                         --    HMAC的secret沒有外流就無法重建對照表。
@@ -73,9 +74,9 @@ CREATE TABLE IF NOT EXISTS line_user_links (
   id                 BIGSERIAL PRIMARY KEY,
   encrypted_line_id  TEXT NOT NULL,                  -- AES-256-GCM 加密LINE userId
   encrypted_recno    TEXT NOT NULL,                  -- AES-256-GCM 加密recno
-  user_id_hash       TEXT NOT NULL,                  -- HMAC-SHA256(line_user_id, USER_ID_HMAC_SECRET)，查詢索引
+user_id_hash    TEXT NOT NULL,                  -- HMAC-SHA256(line_user_id, APP_KEY)，查詢索引
                                                        -- ⚠️ 統一使用HMAC而非純SHA256，理由與recno_hash相同：
-                                                       --    避免離線窮舉攻擊建立對照表，secret需與AES金鑰分開管理。
+                                                       --    避免離線窮舉攻擊建立對照表。
   recno_hash         TEXT NOT NULL,                  -- HMAC-SHA256(recno, RECNO_HMAC_SECRET)，查詢索引
   key_version        SMALLINT NOT NULL DEFAULT 1,   -- 加密/HMAC金鑰版本，供未來金鑰輪換使用
   status             TEXT NOT NULL DEFAULT 'active', -- active / unbound
@@ -150,11 +151,11 @@ CREATE TRIGGER trg_line_user_links_updated_at
 
 -- 驗證碼碰撞檢查：
 -- SELECT 1 FROM verification_codes
--- WHERE code_hash = $1 AND status = 'pending' AND expires_at > now();
+-- WHERE code_hash = HMAC-SHA256($1, APP_KEY) AND status = 'pending' AND expires_at > now();
 
 -- 驗證碼比對：
 -- SELECT * FROM verification_codes
--- WHERE code_hash = $1 AND status = 'pending' AND expires_at > now();
+-- WHERE code_hash = HMAC-SHA256($1, APP_KEY) AND status = 'pending' AND expires_at > now();
 
 -- 錯誤次數遞增（原子操作）：
 -- UPDATE verification_codes SET attempt_count = attempt_count + 1 WHERE id = $1 RETURNING attempt_count;
