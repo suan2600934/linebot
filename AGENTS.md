@@ -109,6 +109,63 @@ node -e "require('./index.js'); syncKnowledgeBase()"
 
 ---
 
+## 📅 2026-06-27 工作進度
+
+### ✅ LINE 帳號綁定系統（lineid_code/）
+
+#### 啟動新子專案
+- `lineid_code/`：LINE 帳號綁定功能，獨立於 LINE Bot 主程式
+- 規格文件：`LINE_BINDING_IMPL.md`（v1.4）
+
+#### Schema 設計（v1.4）
+| 資料表 | 用途 |
+|--------|------|
+| `verification_codes` | 5 分鐘有效驗證碼（code_hash / recno_encrypted / recno_hash / key_version） |
+| `line_user_links` | 正式綁定（encrypted_line_id / encrypted_recno / user_id_hash / recno_hash / key_version） |
+| `line_user_links_history` | 綁定/解綁時間軸（稽核用） |
+| `verification_codes_archive` | 30 天前記錄歸檔 |
+
+#### 加密設計
+- **HMAC-SHA256**：code_hash / recno_hash / user_id_hash（不可逆，防彩虹表）
+- **AES-256-GCM**：recno_encrypted / encrypted_line_id / encrypted_recno（可逆）
+- **SHA256**：一般性雜湊（內容指紋）
+- **金鑰輪替**：APP_KEY_V1 / APP_KEY_V2 + APP_KEY_CURRENT_VERSION
+
+#### crypto-utils.js 完成
+- `HMAC-SHA256`：hmacSha256() + verifyHash()（timingSafeEqual）
+- `AES-256-GCM`：encrypt() + decrypt()（格式：iv:authTag:ciphertext，base64）
+- `SHA256`：sha256()
+- 金鑰從環境變數動態載入（base64 32 bytes）
+- 單元測試 **36/36 全部通過**
+
+#### 待實作
+- [ ] 部署 Zeabur 並設定環境變數後，執行 `test_verify_api.py` 驗證三支 API
+
+### ✅ 三支 API 完成（index.js）
+- `POST /api/create-verify-code`：傳入 recno，產生 6 位驗證碼，回傳明文 code（供 LINE/SMS 推播用）
+- `POST /api/verify`：傳入 recno + code + lineUserId，驗證成功後寫入 line_user_links + history
+- `POST /api/cleanup`：排程呼叫（x-cleanup-api-key 授權），搬移過期驗證碼至 archive
+
+### ✅ API 整合測試腳本
+- `test_verify_api.py`：6 個測試情境，覆蓋建立/驗證/鎖定/清理等流程
+
+### Git 進度
+- `line-binding` 分支已 commit：LINE 帳號綁定系統 MVP（10 個檔案）
+- `.gitignore` 已設定，排除 patdb.dbf / patdb.docx 等敏感資料
+- `patdb.dbf` / `patdb.docx` 未 commit，留在本機
+
+### ✅ 每週班表圖自動產生腳本
+- 新增 `generate-weekly-schedules.js`
+- 讀取 `knowledge-base.md` 中的 Tab 格式班表
+- 自動產生 `schedule-week1.png` ~ `schedule-week5.png`
+- 醫師姓名顏色：周=藍色、鄭=紅色、石=綠色
+
+### 班表圖片尺寸標準化
+- `schedule-full-month.jpg`：1200 x 1193
+- `schedule-week1~5.png`：1050 x 360
+
+---
+
 ## 📅 2026-06-22 工作進度
 
 ### ✅ 動態本週門診表
@@ -135,8 +192,36 @@ node -e "require('./index.js'); syncKnowledgeBase()"
 
 ---
 
-**最後更新**：2026-06-22
-**狀態**：核心功能完成，資料全面雲端化，支援動態更新
+### 班表圖片產生流程
+```
+Excel 班表
+    ↓
+generate-schedule-image.ps1 → schedule-full-month.jpg + knowledge-base.md
+    ↓
+（手動檢查/編輯 knowledge-base.md 中的 Tab 格式班表）
+    ↓
+node generate-weekly-schedules.js → schedule-week1~5.png
+    ↓
+上傳到 Supabase Storage
+```
+
+### 醫師姓名顏色
+| 醫師 | 顏色 |
+|------|------|
+| 周 | 藍色 `#0066cc` |
+| 鄭 | 紅色 `#cc0000` |
+| 石 | 綠色 `#008800` |
+
+### 班表圖片尺寸
+| 檔案 | 尺寸 |
+|------|------|
+| `schedule-full-month.jpg` | 1200 x 1193 |
+| `schedule-week1~5.png` | 1050 x 360 |
+
+---
+
+**最後更新**：2026-06-27
+**狀態**：LINE 帳號綁定系統 MVP 完成，等待 Zeabur 部署驗證
 
 ---
 
