@@ -1,10 +1,12 @@
 {
   "services": {
     "web": {
+      "root": "lineid_code",
       "port": 3000
     }
   },
   "deploy": {
+    "root": "lineid_code",
     "port": 3000
   }
 }
