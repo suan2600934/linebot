@@ -22,7 +22,13 @@ let pool;
 async function initPool() {
   const url = new URL(process.env.DATABASE_URL);
   const addresses = await new Promise((r) => dns.resolve4(url.hostname, (e, a) => r(a || [])));
-  const host = addresses[0] || url.hostname;
+  let host = addresses[0];
+  if (!host) {
+    host = '104.18.38.10';
+    console.log('[pool] DNS resolve failed, using fallback IPv4:', host);
+  } else {
+    console.log('[pool] resolved IPv4:', host);
+  }
   pool = new Pool({
     host,
     port: url.port || 5432,
@@ -32,7 +38,6 @@ async function initPool() {
     family: 4,
     sslmode: 'prefer',
   });
-  console.log('[pool] resolved IPv4:', host);
 }
 
 const VERIFY_CODE_TTL_MINUTES = parseInt(process.env.VERIFY_CODE_TTL_MINUTES || '5', 10);
