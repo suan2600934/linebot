@@ -1,0 +1,13 @@
+{
+  "name": "line-verify-binding-api",
+  "version": "1.4.0",
+  "description": "LINE 帳號綁定系統 - 驗證碼方案 V1 MVP API",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "pg": "^8.12.0"
+  }
+}
