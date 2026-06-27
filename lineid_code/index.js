@@ -3,8 +3,6 @@
 const express = require('express');
 const { Pool } = require('pg');
 const crypto = require('crypto');
-const dns = require('dns');
-const { URL } = require('url');
 const {
   hmacSha256,
   encrypt,
@@ -20,24 +18,22 @@ app.get('/health', (req, res) => res.json({ ok: true }));
 let pool;
 
 async function initPool() {
-  const url = new URL(process.env.DATABASE_URL);
-  const addresses = await new Promise((r) => dns.resolve4(url.hostname, (e, a) => r(a || [])));
-  let host = addresses[0];
-  if (!host) {
-    host = '104.18.38.10';
-    console.log('[pool] DNS resolve failed, using fallback IPv4:', host);
-  } else {
-    console.log('[pool] resolved IPv4:', host);
+  const connStr = process.env.DATABASE_URL;
+  if (!connStr) {
+    throw new Error('Missing DATABASE_URL');
   }
+  const re = /^postgres(?:ql)?:\/\/([^:]+):([^@]+)@([^:\/]+):(\d+)\/([^?]+)$/;
+  const match = connStr.match(re);
+  if (!match) throw new Error('Invalid DATABASE_URL: ' + connStr);
   pool = new Pool({
-    host,
-    port: url.port || 5432,
-    user: url.username,
-    password: url.password,
-    database: url.pathname.slice(1) || 'postgres',
-    family: 4,
-    sslmode: 'prefer',
+    host: match[3],
+    port: Number(match[4]),
+    user: match[1],
+    password: match[2],
+    database: match[5],
+    ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
   });
+  console.log('[pool] initialized, host:', match[3]);
 }
 
 const VERIFY_CODE_TTL_MINUTES = parseInt(process.env.VERIFY_CODE_TTL_MINUTES || '5', 10);
