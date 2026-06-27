@@ -282,7 +282,7 @@ app.post('/api/cleanup', async (req, res) => {
   }
 });
 
-const PORT = parseInt(process.env.PORT || '3000', 10);
+const PORT = parseInt(process.env.PORT || '8081', 10);
 if (require.main === module) {
   initPool().then(() => {
     app.listen(PORT, () => {

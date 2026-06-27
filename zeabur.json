@@ -2,11 +2,11 @@
   "services": {
     "web": {
       "root": "lineid_code",
-      "port": 3000
+      "port": 8081
     }
   },
   "deploy": {
     "root": "lineid_code",
-    "port": 3000
+    "port": 8081
   }
 }
