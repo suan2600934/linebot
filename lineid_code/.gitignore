@@ -1,4 +1,5 @@
 # 敏感資料（不上傳）
+.env
 patdb.dbf
 patdb.docx
 *.dbf
