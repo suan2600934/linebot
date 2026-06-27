@@ -3,6 +3,8 @@
 const express = require('express');
 const { Pool } = require('pg');
 const crypto = require('crypto');
+const dns = require('dns');
+const { URL } = require('url');
 const {
   hmacSha256,
   encrypt,
@@ -13,10 +15,25 @@ const {
 const app = express();
 app.use(express.json());
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  family: 4,
-});
+app.get('/health', (req, res) => res.json({ ok: true }));
+
+let pool;
+
+async function initPool() {
+  const url = new URL(process.env.DATABASE_URL);
+  const addresses = await new Promise((r) => dns.resolve4(url.hostname, (e, a) => r(a || [])));
+  const host = addresses[0] || url.hostname;
+  pool = new Pool({
+    host,
+    port: url.port || 5432,
+    user: url.username,
+    password: url.password,
+    database: url.pathname.slice(1) || 'postgres',
+    family: 4,
+    sslmode: 'prefer',
+  });
+  console.log('[pool] resolved IPv4:', host);
+}
 
 const VERIFY_CODE_TTL_MINUTES = parseInt(process.env.VERIFY_CODE_TTL_MINUTES || '5', 10);
 const VERIFY_MAX_ATTEMPTS = parseInt(process.env.VERIFY_MAX_ATTEMPTS || '3', 10);
@@ -262,8 +279,13 @@ app.post('/api/cleanup', async (req, res) => {
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log(`LINE 帳號綁定 API 已啟動,監聽埠號 ${PORT}`);
+  initPool().then(() => {
+    app.listen(PORT, () => {
+      console.log(`LINE 帳號綁定 API 已啟動,監聽埠號 ${PORT}`);
+    });
+  }).catch((err) => {
+    console.error('[initPool] failed:', err);
+    process.exit(1);
   });
 }
 
