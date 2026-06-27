@@ -13,7 +13,10 @@ const {
 const app = express();
 app.use(express.json());
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  family: 4,
+});
 
 const VERIFY_CODE_TTL_MINUTES = parseInt(process.env.VERIFY_CODE_TTL_MINUTES || '5', 10);
 const VERIFY_MAX_ATTEMPTS = parseInt(process.env.VERIFY_MAX_ATTEMPTS || '3', 10);
