@@ -100,35 +100,39 @@ app.post('/api/create-verify-code', async (req, res) => {
 });
 
 app.post('/api/verify', async (req, res) => {
-  const { recno, code, lineUserId } = req.body || {};
+  const { code, lineUserId } = req.body || {};
 
-  if (!recno || !code || !lineUserId) {
-    return badRequest(res, '缺少必填欄位 recno / code / lineUserId');
+  if (!code || !lineUserId) {
+    return badRequest(res, '缺少必填欄位 code / lineUserId');
   }
 
   const client = await pool.connect();
   try {
-    const recnoHash = hmacSha256(recno);
-
     await client.query('BEGIN');
 
+    const codeHash = hmacSha256(code);
     const { rows } = await client.query(
-      `SELECT id, code_hash, recno_encrypted, key_version, attempt_count, expires_at
+      `SELECT id, recno_encrypted, key_version, attempt_count, expires_at, status
          FROM verification_codes
-        WHERE recno_hash = $1
-          AND status = 'pending'
+        WHERE code_hash = $1
         ORDER BY created_at DESC
         LIMIT 1
         FOR UPDATE`,
-      [recnoHash]
+      [codeHash]
     );
 
     if (rows.length === 0) {
       await client.query('ROLLBACK');
-      return res.status(400).json({ ok: false, error: '找不到有效的驗證碼,請重新申請' });
+      return res.status(400).json({ ok: false, error: '驗證碼錯誤,請重新申請' });
     }
 
     const row = rows[0];
+
+    if (row.status !== 'pending') {
+      await client.query('ROLLBACK');
+      const msg = row.status === 'used' ? '驗證碼已使用' : '驗證碼已失效,請重新申請';
+      return res.status(400).json({ ok: false, error: msg });
+    }
 
     if (new Date(row.expires_at) < new Date()) {
       await client.query(
@@ -139,48 +143,15 @@ app.post('/api/verify', async (req, res) => {
       return res.status(400).json({ ok: false, error: '驗證碼已過期,請重新申請' });
     }
 
-    const inputCodeHash = hmacSha256(code, row.key_version);
-    const isMatch =
-      inputCodeHash.length === row.code_hash.length &&
-      crypto.timingSafeEqual(Buffer.from(inputCodeHash, 'hex'), Buffer.from(row.code_hash, 'hex'));
-
-    if (!isMatch) {
-      const newAttemptCount = row.attempt_count + 1;
-      const reachedLimit = newAttemptCount >= VERIFY_MAX_ATTEMPTS;
-
-      await client.query(
-        `UPDATE verification_codes
-            SET attempt_count = $1,
-                status = $2
-          WHERE id = $3`,
-        [newAttemptCount, reachedLimit ? 'failed' : 'pending', row.id]
-      );
-      await client.query('COMMIT');
-
-      if (reachedLimit) {
-        return res.status(400).json({ ok: false, error: '驗證碼錯誤次數過多,請重新申請' });
-      }
-      return res.status(400).json({
-        ok: false,
-        error: '驗證碼錯誤',
-        remainingAttempts: VERIFY_MAX_ATTEMPTS - newAttemptCount,
-      });
-    }
-
     const decryptedRecno = decrypt(row.recno_encrypted, row.key_version);
-    if (decryptedRecno !== recno) {
-      await client.query('ROLLBACK');
-      console.error('[verify] recno mismatch after decrypt, id=', row.id);
-      return res.status(500).json({ ok: false, error: '系統錯誤,請稍後再試' });
-    }
-
+    const recnoHash = hmacSha256(decryptedRecno);
     const userIdHash = hmacSha256(lineUserId);
     const { payload: encryptedLineId } = encrypt(lineUserId);
-    const { payload: encryptedRecno } = encrypt(recno);
+    const { payload: encryptedRecno } = encrypt(decryptedRecno);
 
     const existing = await client.query(
       `SELECT id FROM line_user_links
-        WHERE user_id_hash = $1 AND recno_hash = $2 AND status = 'active'`,
+         WHERE user_id_hash = $1 AND recno_hash = $2 AND status = 'active'`,
       [userIdHash, recnoHash]
     );
 
@@ -190,7 +161,7 @@ app.post('/api/verify', async (req, res) => {
     } else {
       const linkResult = await client.query(
         `INSERT INTO line_user_links
-           (encrypted_line_id, encrypted_recno, user_id_hash, recno_hash, key_version, status)
+            (encrypted_line_id, encrypted_recno, user_id_hash, recno_hash, key_version, status)
          VALUES ($1, $2, $3, $4, $5, 'active')
          RETURNING id`,
         [encryptedLineId, encryptedRecno, userIdHash, recnoHash, CURRENT_KEY_VERSION]
@@ -205,9 +176,7 @@ app.post('/api/verify', async (req, res) => {
     }
 
     await client.query(
-      `UPDATE verification_codes
-          SET status = 'used', used_at = now()
-        WHERE id = $1`,
+      `UPDATE verification_codes SET status = 'used', used_at = now() WHERE id = $1`,
       [row.id]
     );
 
