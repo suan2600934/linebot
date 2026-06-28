@@ -62,8 +62,8 @@ def create_verify_code(recno):
     return resp
 
 
-def verify(recno, code, line_user_id):
-    resp = post("/api/verify", json={"recno": recno, "code": code, "lineUserId": line_user_id})
+def verify(code, line_user_id):
+    resp = post("/api/verify", json={"code": code, "lineUserId": line_user_id})
     return resp
 
 
@@ -108,7 +108,7 @@ def test_create_verify_code():
 def test_verify_success(recno, code):
     print("\n--- 測試 2: /api/verify 正確驗證碼應成功 ---")
     line_user_id = f"U_test_{uuid.uuid4().hex[:8]}"
-    resp = verify(recno, code, line_user_id)
+    resp = verify(code, line_user_id)
 
     if resp is None:
         log("驗證成功流程", False, "連線失敗")
@@ -127,7 +127,7 @@ def test_verify_success(recno, code):
 
 def test_verify_idempotent(recno, code, line_user_id):
     print("\n--- 測試 3: 同一組已成功綁定後,重複驗證同碼應失敗(碼已被標記 used) ---")
-    resp = verify(recno, code, line_user_id)
+    resp = verify(code, line_user_id)
 
     if resp is None:
         log("重複驗證已使用碼", False, "連線失敗")
@@ -151,7 +151,7 @@ def test_verify_wrong_code_lockout():
 
     expected_remaining = [2, 1]  # 第1次錯誤剩2次,第2次錯誤剩1次
     for i, expected in enumerate(expected_remaining, start=1):
-        resp = verify(recno, wrong_code, line_user_id)
+        resp = verify(wrong_code, line_user_id)
         if resp is None:
             log(f"第 {i} 次錯誤嘗試", False, "連線失敗")
             continue
@@ -161,7 +161,7 @@ def test_verify_wrong_code_lockout():
         log(f"第 {i} 次錯誤嘗試,剩餘次數應為 {expected}", ok, f"實際: {resp.status_code}, remaining={remaining}")
 
     # 第 3 次錯誤,應觸發鎖定(status -> failed)
-    resp = verify(recno, wrong_code, line_user_id)
+    resp = verify(wrong_code, line_user_id)
     if resp is None:
         log("第 3 次錯誤嘗試(應觸發鎖定)", False, "連線失敗")
     else:
@@ -170,7 +170,7 @@ def test_verify_wrong_code_lockout():
         log("第 3 次錯誤後應回報「錯誤次數過多」", ok, f"實際: {body}")
 
     # 鎖定後,即使輸入正確的碼,也應該驗證失敗(因為已被標記 failed,查無 pending)
-    resp = verify(recno, real_code, line_user_id)
+    resp = verify(real_code, line_user_id)
     if resp is None:
         log("鎖定後用正確碼驗證,仍應失敗", False, "連線失敗")
     else:
@@ -181,7 +181,7 @@ def test_verify_wrong_code_lockout():
 def test_unknown_recno():
     print("\n--- 測試 5: 從未申請過驗證碼的 recno,驗證應直接失敗(找不到) ---")
     recno = gen_test_recno()
-    resp = verify(recno, "123456", f"U_test_{uuid.uuid4().hex[:8]}")
+    resp = verify("123456", f"U_test_{uuid.uuid4().hex[:8]}")
     if resp is None:
         log("未知 recno 驗證", False, "連線失敗")
         return
