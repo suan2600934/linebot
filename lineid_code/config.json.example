@@ -1,0 +1,5 @@
+{
+  "patdbPath": "H:\\opencode\\linebot\\lineid_code\\patdb.dbf",
+  "apiBaseUrl": "https://lineid-code.zeabur.app",
+  "logDir": "logs"
+}
