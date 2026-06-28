@@ -254,7 +254,6 @@ app.post('/api/cleanup', async (req, res) => {
 });
 
 app.post('/api/line-webhook',
-  express.raw({ type: 'application/json' }),
   middleware({ channelSecret: process.env.LINE_CHANNEL_SECRET }),
   async (req, res) => {
     const events = req.body.events || [];
