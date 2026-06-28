@@ -9,7 +9,7 @@
 ### 雷點一：DATABASE_URL 環境變數未設定 → Missing DATABASE_URL
 **症狀**：`[initPool] failed: Error: Missing DATABASE_URL` → 容器不斷重啟，BackOff
 **原因**：Zeabur 環境變數裡沒有設定 DATABASE_URL
-**解法**：在 Zeabur 環境變數新增（值從 Supabase Dashboard → Connection Pooling 取得）：
+**解法**：在 Zeabur 環境變數新增。Pooler URL 取得方式：Supabase Dashboard → 你的專案 → **連線（Connection）** → 上方點選 **CONNECT** → 選 **DIRECT** → 下方即為 Pooler URL（port 6543）。格式：
 ```
 DATABASE_URL=postgresql://postgres.kbpyxboleoefwvdnjcod:awSDlKU0zaobAa7D@aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres
 ```
