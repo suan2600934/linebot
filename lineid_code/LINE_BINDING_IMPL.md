@@ -1,6 +1,6 @@
 # LINE 帳號綁定系統 — 實作紀錄
 
-## 📅 最後更新：2026-06-28（v1.5）
+## 📅 最後更新：2026-06-28（v1.6）
 
 ---
 
@@ -11,7 +11,7 @@
 **原因**：Zeabur 環境變數裡沒有設定 DATABASE_URL
 **解法**：在 Zeabur 環境變數新增。Pooler URL 取得方式：Supabase Dashboard → 你的專案 → **連線（Connection）** → 上方點選 **CONNECT** → 選 **DIRECT** → 下方即為 Pooler URL（port 6543）。格式：
 ```
-DATABASE_URL=postgresql://postgres.kbpyxboleoefwvdnjcod:awSDlKU0zaobAa7D@aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres
+DATABASE_URL=postgresql://postgres.kbpyxboleoefwvdnjcod:PASSWORD@aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres
 ```
 
 ### 雷點二：new URL() 解析 DATABASE_URL → TypeError: Invalid URL
@@ -21,111 +21,134 @@ DATABASE_URL=postgresql://postgres.kbpyxboleoefwvdnjcod:awSDlKU0zaobAa7D@aws-1-a
 ```js
 const re = /^postgres(?:ql)?:\/\/([^:]+):([^@]+)@([^:\/]+):(\d+)\/([^?]+)$/;
 const match = connStr.match(re);
-// 同時支援 postgres:// 和 postgresql://，database 只取 ? 之前的部分
 ```
+同時支援 `postgres://` 和 `postgresql://`，database 只取 `?` 之前的部分。
 
 ### 雷點三：IPv6 ENETUNREACH → Supabase DNS 返回 IPv6 但容器不支援
 **症狀**：`connect ENETUNREACH 2406:da18:...:5432`（IPv6 address）
 **原因**：Zeabur 容器網路不支援 IPv6 出去，Supabase DNS 返回 AAAA 記錄，pg 拿到 IPv6 address
-**解法**：
-1. 使用 Supabase **Connection Pooler**（port 6543），由 Pooler 處理對外的連線
-2. Pooler 的 host 是 `aws-1-ap-southeast-1.pooler.supabase.com`，不會返回 IPv6
-3. 如果必須直接連 5432：在 code 裡做 DNS resolve4 並 fallback 到硬編碼 IPv4
+**解法**：使用 Supabase **Connection Pooler**（port 6543），由 Pooler 處理對外的連線，不會返回 IPv6。
 
 ### 雷點四：兩個 Node.js service 綁同一 port → 只有一個能搶到
 **症狀**：`/health` 和 `/api/*` 都 404，請求被主要 LINE Bot 截走
 **原因**：主要 Bot (index.js) 和 lineid_code 同時部署但綁相同 port，先啟動的搶贏
-**解法**：將 lineid_code 改成不同 port（如 8081），在 zeabur.json 和 code 裡同步修改：
-```js
-const PORT = parseInt(process.env.PORT || '8081', 10);
-```
-
----
+**解法**：將 lineid_code 改成不同 port（如 8081）。
 
 ### 雷點五：全域 express.json() 破壞 LINE webhook signature 驗證
 **症狀**：`SignatureValidationFailed`，LINE Console 顯示 500 Internal Server Error
 **原因**：`app.use(express.json())` 在所有 route 之前先把 body 解析成 JSON，LINE middleware 因此拿不到原始 body 驗 signature
-**解法**：移除全域 middleware，個別 API route 加上 `express.json()`
+**解法**：移除全域 middleware，個別 API route 加上 `express.json()`：
+```js
+app.post('/api/create-verify-code', express.json(), async (req, res) => {...});
+app.post('/api/verify', express.json(), async (req, res) => {...});
+app.post('/api/cleanup', express.json(), async (req, res) => {...});
+// LINE webhook 不用 express.json()，middleware 自己處理 raw body
+```
+
+### 雷點六：LINE Webhook 需要 raw body 做 signature 驗證
+**症狀**：`SignatureValidationFailed` 500 錯誤
+**原因**：LINE middleware 需要原始 request body 做 HMAC 驗證，不能被任何 middleware 先吃掉
+**解法**：LINE Webhook route 的 middleware 順序：
+```js
+app.post('/api/line-webhook',
+  middleware({ channelSecret: process.env.LINE_CHANNEL_SECRET }),
+  async (req, res) => {...}
+);
+```
+LINE middleware 必須放第一順位，且不能有任何 `express.raw()` 或 `express.json()` 在它之前。
 
 ---
+
+## 正確的 Zeabur 部署檢查清單
 
 1. **確認有設定 `DATABASE_URL`**，值為 Pooler URL（port 6543），格式：
    ```
    postgresql://postgres.PROJECT_REF:PASSWORD@aws-REGION.pooler.supabase.com:6543/postgres
    ```
-2. **確認環境變數有設定這些必要值**：
+2. **LINE Messaging API 環境變數**（LINE Webhook 用）：
+   - `LINE_CHANNEL_SECRET` — LINE Developers Console 取得
+   - `LINE_CHANNEL_ACCESS_TOKEN` — LINE Developers Console 取得
+   - `API_BASE_URL` — 供 line-webhook 內部呼叫 `/api/verify`
+3. **加密相關環境變數**：
    - `APP_KEY_V1`
    - `APP_KEY_CURRENT_VERSION`
    - `CLEANUP_API_KEY`
-   - `VERIFY_CODE_TTL_MINUTES`
-   - `VERIFY_MAX_ATTEMPTS`
-   - `DATABASE_URL`
-3. **確認程式裡預設的 PORT 與 Zeabur 設定一致**，避免被平台覆蓋
-4. **使用 Connection Pooler**（port 6543）而非直接 5432，適合 Serverless/容器環境
+4. **驗證碼設定**：
+   - `VERIFY_CODE_TTL_MINUTES`（預設 5）
+   - `VERIFY_MAX_ATTEMPTS`（預設 3）
+5. **使用 Connection Pooler**（port 6543）而非直接 5432，適合 Serverless/容器環境
+6. **LINE Developers Console Webhook URL** 設為：
+   ```
+   https://lineid-code.zeabur.app/api/line-webhook
+   ```
+   並確認「使用 Webhook」開啟、「自動回應」關閉。
 
 ---
 
 ## 系統架構
 
-### 驗證碼方案流程
+### 驗證碼方案流程（完整）
 ```
-櫃台查詢病人（patdb.dbf）
-    ↓
-病人確認身份（雙證件 + 人工確認）
+櫃台（patdb.dbf 查詢病人）
     ↓
 櫃台產生驗證碼 → POST /api/create-verify-code { recno }
     ↓
-病人拿驗證碼到 LINE 對話框輸入
+病人拿驗證碼到手機，搜尋「賜安診所」LINE 官方帳號，輸入驗證碼
     ↓
-LINE 發送 verify code → POST /api/verify
+LINE Platform 收到訊息 → POST /api/line-webhook
     ↓
-系統綁定 userId + recno → 寫入 line_user_links + line_user_links_history
+LINE Webhook 驗 signature → 確認是 LINE 平台的合法請求
+    ↓
+檢查是否為 6 位數 → 是 → 呼叫 /api/verify { code, lineUserId }
+    ↓
+/api/verify 內部用 code 反查 recno，atomic 寫入 line_user_links
+    ↓
+LINE Bot 回覆「✅ 綁定成功！」給病人
 ```
 
 ---
 
-## 資料庫 Schema（v1.3）
+## 資料庫 Schema（v1.6）
 
-### verification_codes（原 pending_links，5分鐘有效驗證碼）
+### verification_codes
 | 欄位 | 說明 |
 |------|------|
 | id | PK |
-| code_hash | HMAC-SHA256(6位驗證碼, APP_KEY)，不存明碼（防止彩虹表攻擊） |
-| recno_encrypted | AES-256-GCM 加密 recno（格式：iv:encrypted:authTag） |
-| recno_hash | HMAC-SHA256(recno, RECNO_HMAC_SECRET)，查詢索引 |
-| key_version | 加密/HMAC 金鑰版本（預設 1） |
+| code_hash | HMAC-SHA256(6位驗證碼, APP_KEY)，不存明碼 |
+| recno_encrypted | AES-256-GCM 加密 recno |
+| recno_hash | HMAC-SHA256(recno)，查詢索引 |
+| key_version | 金鑰版本（預設 1） |
 | created_at | 產生時間 |
 | expires_at | 過期時間（created_at + 5分鐘） |
-| attempt_count | 錯誤次數（累計滿3次失效） |
+| attempt_count | 錯誤次數（廢棄，保留欄位） |
 | status | pending / used / expired / failed |
 | used_at | 綁定成功時間 |
 
-### line_user_links（正式綁定表，存放目前狀態）
+### line_user_links
 | 欄位 | 說明 |
 |------|------|
 | id | PK |
 | encrypted_line_id | AES-256-GCM 加密 LINE userId |
 | encrypted_recno | AES-256-GCM 加密 recno |
-| user_id_hash | HMAC-SHA256(line_user_id, USER_ID_HMAC_SECRET)，查詢索引 |
-| recno_hash | HMAC-SHA256(recno, RECNO_HMAC_SECRET)，查詢索引 |
-| key_version | 加密/HMAC 金鑰版本（預設 1） |
+| user_id_hash | HMAC-SHA256(lineUserId)，查詢索引 |
+| recno_hash | HMAC-SHA256(recno)，查詢索引 |
+| key_version | 金鑰版本（預設 1） |
 | status | active / unbound |
 | linked_at | 綁定時間 |
 | unbound_at | 解綁時間 |
-| updated_at | 更新時間（自動更新 trigger） |
 
-### line_user_links_history（綁定/解綁完整時間軸）
+### line_user_links_history
 | 欄位 | 說明 |
 |------|------|
 | id | PK |
 | link_id | 對應 line_user_links.id |
-| user_id_hash | HMAC-SHA256(line_user_id, USER_ID_HMAC_SECRET) |
-| recno_hash | HMAC-SHA256(recno, RECNO_HMAC_SECRET) |
+| user_id_hash | HMAC-SHA256(lineUserId) |
+| recno_hash | HMAC-SHA256(recno) |
 | action | bind / unbind |
 | occurred_at | 發生時間 |
 
-### verification_codes_archive（稽核用歷史表）
-30天前的 used/expired/failed 記錄搬移至此。
+### verification_codes_archive
+30天前的 used/expired/failed 記錄搬移至此（供稽核）。
 
 ---
 
@@ -134,33 +157,17 @@ LINE 發送 verify code → POST /api/verify
 | 用途 | 方法 |
 |------|------|
 | 驗證碼儲存 | HMAC-SHA256(驗證碼, APP_KEY) → code_hash |
-| recno 索引 | HMAC-SHA256(recno, RECNO_HMAC_SECRET) → recno_hash |
+| recno 索引 | HMAC-SHA256(recno) → recno_hash |
 | recno 加密 | AES-256-GCM → recno_encrypted |
-| LINE userId 索引 | HMAC-SHA256(userId, USER_ID_HMAC_SECRET) → user_id_hash |
+| LINE userId 索引 | HMAC-SHA256(userId) → user_id_hash |
 | LINE userId 加密 | AES-256-GCM → encrypted_line_id |
 
 **為什麼不用純 SHA256？**
 - 驗證碼僅 6 位數（百萬種組合），攻擊者可離線窮舉全部組合建立對照表
-- 病歷號也只有 6 位數，同樣脆弱
 - HMAC 需要 secret key，沒有外流就無法重建對照表
-- **所有 *_hash 欄位統一使用 HMAC-SHA256**，金鑰需分開管理（不同於 AES 金鑰）
+- **所有 `*_hash` 欄位統一使用 HMAC-SHA256**
 
-**格式**：`iv:encrypted:authTag`（Base16 hex）
-
----
-
-## 環境變數（需設定）
-
-```env
-# AES-256-GCM + HMAC-SHA256 共用金鑰（32 bytes, base64 編碼）
-# 金鑰輪替：新增 APP_KEY_V2 並改 APP_KEY_CURRENT_VERSION=2
-APP_KEY_V1=xxx                    # 第一版金鑰
-APP_KEY_V2=xxx                     # （選填）第二版金鑰，用於金鑰輪替
-APP_KEY_CURRENT_VERSION=1          # 新資料使用的金鑰版本
-
-# 金鑰版本（與 APP_KEY_CURRENT_VERSION 同步）
-KEY_VERSION=1
-```
+**格式**：`iv:authTag:ciphertext`（base64）
 
 ---
 
@@ -177,79 +184,123 @@ KEY_VERSION=1
 **Response**：
 ```json
 {
-  "success": true,
-  "verify_code": "123456",
-  "expires_in": 300
+  "ok": true,
+  "data": {
+    "id": "1",
+    "code": "123456",
+    "expiresAt": "2026-06-28T06:00:00.000Z"
+  }
 }
 ```
 
 **邏輯**：
-1. 計算 recno_hash = HMAC-SHA256(recno, RECNO_HMAC_SECRET)
-2. 檢查 line_user_links 是否已有 active 綁定
-3. 檢查 verification_codes 是否有同 recno_hash 的生效中驗證碼
-4. 若有，標記舊碼為 expired
-5. 產生 6 位數驗證碼，檢查 code_hash 不碰撞
-6. 加密 recno，計算 recno_hash
-7. 寫入 verification_codes
+1. 同一 recno 有 pending 驗證碼 → 先標記 expired
+2. 產生 6 位數隨機驗證碼，計算 code_hash、recno_hash
+3. AES-256-GCM 加密 recno
+4. 寫入 verification_codes（status=pending，5分鐘後過期）
+5. 回傳明文驗證碼供櫃台顯示/列印給病人
 
-### POST /api/verify
-**用途**：LINE 收到驗證碼後觸發
+---
 
-**Request Body**：
+### POST /api/verify（v1.6 重構）
+**用途**：LINE Bot Webhook 收到驗證碼後呼叫
+
+**Request Body**（不需要 recno）：
 ```json
-{
-  "replyToken": "xxx",
-  "userId": "Uxxxxxx",
-  "code": "123456"
-}
+{ "code": "123456", "lineUserId": "Uxxxxxx" }
 ```
 
 **Response**：
 ```json
-{
-  "success": true,
-  "message": "綁定成功"
-}
+{ "ok": true, "data": { "linkId": "1" } }
 ```
 
-**邏輯**：
-1. 查 verification_codes：code_hash = HMAC-SHA256(code, APP_KEY) AND status = 'pending' AND expires_at > now()
-2. 若找不到，回傳失敗
-3. 原子遞增 attempt_count，RETURNING attempt_count
-4. 若 attempt_count >= 3，標記為 failed，回傳失敗
-5. 加密 LINE userId，計算 user_id_hash
-6. Transaction：
-   - INSERT INTO line_user_links
-   - INSERT INTO line_user_links_history (action = 'bind')
-7. 更新 verification_codes 為 used
+**邏輯**（同一個 DB transaction 內完成）：
+1. 用 code_hash 查 verification_codes（status=pending）
+2. 檢查是否過期、是否已用
+3. 解密 recno_encrypted 得到 recno
+4. 寫入 line_user_links
+5. 寫入 line_user_links_history（action=bind）
+6. 標記 verification_codes 為 used
+7. 回傳 linkId
+
+---
 
 ### POST /api/cleanup
-**用途**：排程清理過期驗證碼
+**用途**：排程清理過期驗證碼並歸檔
 
-**邏輯**：
-```sql
-UPDATE verification_codes SET status = 'expired'
-WHERE status = 'pending' AND expires_at <= now();
+**Header**：`x-cleanup-api-key: 你的 CLEANUP_API_KEY`
+
+**Response**：
+```json
+{ "ok": true, "data": { "archived": 10, "deleted": 10 } }
+```
+
+---
+
+### POST /api/line-webhook
+**用途**：LINE Messaging API Webhook endpoint（接收 LINE 平台事件）
+
+**LINE Developers Console 設定**：
+```
+Webhook URL: https://lineid-code.zeabur.app/api/line-webhook
+```
+
+**處理的訊息類型**：
+- 6 位數字 → 當驗證碼處理，呼叫 /api/verify，回覆「✅ 綁定成功」或「❌ 綁定失敗」
+- 其他訊息 → 回覆「請輸入收到的 6 位數驗證碼，若無驗證碼請至櫃台索取」
+
+**流程**：
+1. LINE middleware 驗 signature（防止偽造）
+2. 從 `event.source.userId` 取得 LINE userId
+3. 從 `event.message.text` 取得病人輸入的訊息
+4. 判斷是否為 6 位數
+5. 呼叫 /api/verify（內部呼叫）
+6. 用 replyToken 回覆結果
+
+---
+
+## 環境變數（需設定）
+
+```env
+# ===== Database =====
+DATABASE_URL=postgresql://postgres.PROJECT_REF:PASSWORD@aws-REGION.pooler.supabase.com:6543/postgres
+
+# ===== 加密金鑰 =====
+APP_KEY_V1=YOUR_BASE64_32BYTE_KEY
+APP_KEY_CURRENT_VERSION=1
+
+# ===== 驗證碼設定 =====
+VERIFY_CODE_TTL_MINUTES=5
+VERIFY_MAX_ATTEMPTS=3
+
+# ===== Cleanup API =====
+CLEANUP_API_KEY=YOUR_CLEANUP_API_KEY
+
+# ===== LINE Messaging API（LINE Webhook 用）=====
+LINE_CHANNEL_SECRET=YOUR_CHANNEL_SECRET
+LINE_CHANNEL_ACCESS_TOKEN=YOUR_CHANNEL_ACCESS_TOKEN
+
+# ===== LINE Webhook 內部呼叫 =====
+API_BASE_URL=https://lineid-code.zeabur.app
 ```
 
 ---
 
 ## 待辦事項
 
-### MVP（現在要做）
-- [x] 建立 Supabase 表格（v1.3）
-- [x] 建立 LINE_BINDING_IMPL.md 實作紀錄
-- [x] crypto-utils.js：HMAC-SHA256 / AES-256-GCM / SHA256 加密工具（含單元測試 36/36 通過）
-- [x] index.js：三支 API（POST /api/create-verify-code、/api/verify、/api/cleanup）已完成
-- [ ] Python 腳本：讀取 patdb.dbf 並呼叫 Zeabur API
-- [ ] Python 腳本：讀取 patdb.dbf 並呼叫 Zeabur API
-- [ ] 測試並 merge 回 master
+### MVP
+- [x] 建立 Supabase 表格（verification_codes、line_user_links、line_user_links_history、verification_codes_archive）
+- [x] crypto-utils.js：HMAC-SHA256 / AES-256-GCM / SHA256（含單元測試 36/36 通過）
+- [x] index.js：三支 API（/api/create-verify-code、/api/verify、/api/cleanup）
+- [x] LINE Webhook handler（/api/line-webhook）
+- [x] 完整流程測試（驗證碼 → LINE 輸入 → 綁定成功）
+- [ ] Python 腳本：讀取 patdb.dbf 並呼叫 /api/create-verify-code
 
-### 正式版（之後再做）
-- [ ] 排程 Job A：每 5 分鐘標記過期驗證碼
-- [ ] 排程 Job B：每天搬移舊記錄到 archive
-- [ ] 更新綁定（Upsert）
-- [ ] 取消綁定（UX 待定）
+### 正式版
+- [ ] 排程 Job：每 5 分鐘標記過期驗證碼
+- [ ] 取消綁定功能
+- [ ] 合併回主要 Bot（目前獨立部署於 lineid-code.zeabur.app）
 
 ---
 
@@ -258,11 +309,10 @@ WHERE status = 'pending' AND expires_at <= now();
 1. **驗證碼明碼不落地**：只在記憶體中用來顯示/列印，比對時用 hash
 2. **HMAC secret 與 AES key 分開**：不同金鑰、不同用途
 3. **HMAC 取代純 SHA256**：防止離線窮舉攻擊
-4. **唯一約束在 hash 欄位**：因為 AES-GCM 每次用隨機 IV
-5. **部分唯一索引**：只限制 active 狀態，解綁後可重新綁定
-6. **attempt_count 原子操作**：避免 race condition
-7. **line_user_links 用 UPDATE**：只存放目前狀態，方便日常查詢
-8. **line_user_links_history 用 INSERT**：每次狀態變化都記錄，支援稽核
+4. **驗證碼用 code_hash 查表**：LINE Webhook 不需要知道 recno
+5. **verify API 同一 transaction 完成所有操作**：避免 race condition
+6. **LINE middleware 放 route 第一順位**：signature 驗證需要 raw body
+7. **全域不使用 express.json()**：避免 LINE webhook signature 失敗
 
 ---
 
@@ -276,7 +326,7 @@ SELECT * FROM line_user_links WHERE recno_hash = $1 AND status = 'active';
 SELECT * FROM verification_codes
 WHERE recno_hash = $1 AND status = 'pending' AND expires_at > now();
 
--- 驗證碼比對
+-- 驗證碼比對（用 code_hash 查表）
 SELECT * FROM verification_codes
 WHERE code_hash = HMAC-SHA256($1, APP_KEY) AND status = 'pending' AND expires_at > now();
 
