@@ -197,6 +197,76 @@ app.post('/api/verify', express.json(), async (req, res) => {
   }
 });
 
+// ─── Job A: 每 5 分鐘標記過期驗證碼 ───
+app.post('/api/cleanup/mark-expired', express.json(), async (req, res) => {
+  const providedKey = req.get('x-cleanup-api-key');
+  if (!process.env.CLEANUP_API_KEY || providedKey !== process.env.CLEANUP_API_KEY) {
+    return res.status(401).json({ ok: false, error: '未授權' });
+  }
+
+  const client = await pool.connect();
+  try {
+    const result = await client.query(
+      `UPDATE verification_codes
+          SET status = 'expired'
+        WHERE status = 'pending'
+          AND expires_at < now()`
+    );
+    return res.status(200).json({ ok: true, data: { updated: result.rowCount } });
+  } catch (err) {
+    console.error('[mark-expired] error:', err);
+    return res.status(500).json({ ok: false, error: '系統錯誤,請稍後再試' });
+  } finally {
+    client.release();
+  }
+});
+
+// ─── Job B: 每天搬移舊記錄到 archive ───
+app.post('/api/cleanup/archive-old', express.json(), async (req, res) => {
+  const providedKey = req.get('x-cleanup-api-key');
+  if (!process.env.CLEANUP_API_KEY || providedKey !== process.env.CLEANUP_API_KEY) {
+    return res.status(401).json({ ok: false, error: '未授權' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const archiveResult = await client.query(
+      `INSERT INTO verification_codes_archive
+         (id, code_hash, recno_encrypted, recno_hash, key_version,
+          created_at, expires_at, attempt_count, status, used_at)
+       SELECT id, code_hash, recno_encrypted, recno_hash, key_version,
+              created_at, expires_at, attempt_count, status, used_at
+         FROM verification_codes
+        WHERE status IN ('used', 'expired', 'failed')
+       ON CONFLICT (id) DO NOTHING
+       RETURNING id`
+    );
+
+    const archivedIds = archiveResult.rows.map((r) => r.id);
+
+    let deletedCount = 0;
+    if (archivedIds.length > 0) {
+      const deleteResult = await client.query(
+        `DELETE FROM verification_codes WHERE id = ANY($1::bigint[])`,
+        [archivedIds]
+      );
+      deletedCount = deleteResult.rowCount;
+    }
+
+    await client.query('COMMIT');
+    return res.status(200).json({ ok: true, data: { archived: archivedIds.length, deleted: deletedCount } });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('[archive-old] error:', err);
+    return res.status(500).json({ ok: false, error: '系統錯誤,請稍後再試' });
+  } finally {
+    client.release();
+  }
+});
+
+// ─── 舊的 /api/cleanup（保留向後相容）───
 app.post('/api/cleanup', express.json(), async (req, res) => {
   const providedKey = req.get('x-cleanup-api-key');
   if (!process.env.CLEANUP_API_KEY || providedKey !== process.env.CLEANUP_API_KEY) {
@@ -238,11 +308,7 @@ app.post('/api/cleanup', express.json(), async (req, res) => {
     }
 
     await client.query('COMMIT');
-
-    return res.status(200).json({
-      ok: true,
-      data: { archived: archivedIds.length, deleted: deletedCount },
-    });
+    return res.status(200).json({ ok: true, data: { archived: archivedIds.length, deleted: deletedCount } });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('[cleanup] error:', err);

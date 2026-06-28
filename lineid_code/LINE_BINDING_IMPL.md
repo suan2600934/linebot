@@ -1,6 +1,6 @@
 # LINE 帳號綁定系統 — 實作紀錄
 
-## 📅 最後更新：2026-06-28（v1.6）
+## 📅 最後更新：2026-06-28（v1.8）
 
 ---
 
@@ -295,10 +295,11 @@ API_BASE_URL=https://lineid-code.zeabur.app
 - [x] index.js：三支 API（/api/create-verify-code、/api/verify、/api/cleanup）
 - [x] LINE Webhook handler（/api/line-webhook）
 - [x] 完整流程測試（驗證碼 → LINE 輸入 → 綁定成功）
-- [ ] Python 腳本：讀取 patdb.dbf 並呼叫 /api/create-verify-code
+- [x] Python 腳本：讀取 patdb.dbf 並呼叫 /api/create-verify-code（patdb_query.py）
 
 ### 正式版
-- [ ] 排程 Job：每 5 分鐘標記過期驗證碼
+- [x] 排程 Job：每 5 分鐘標記過期驗證碼（/api/cleanup/mark-expired）
+- [x] 排程 Job：每天 archive 搬移（/api/cleanup/archive-old）
 - [ ] 取消綁定功能
 - [ ] 合併回主要 Bot（目前獨立部署於 lineid-code.zeabur.app）
 
@@ -345,3 +346,72 @@ WHERE status = 'pending' AND expires_at <= now();
 -- 查詢某病歷號完整歷史（稽核）
 SELECT * FROM line_user_links_history WHERE recno_hash = $1 ORDER BY occurred_at;
 ```
+
+---
+
+## patdb_query.py（櫃檯驗證碼產生器）
+
+**功能**：Tkinter GUI，讀取 patdb.dbf → 搜尋病人 → 選擇 → 呼叫 API 產生驗證碼
+
+**技術棧**：Python 3 + tkinter + dbfread + requests
+
+**DBF 編碼**：務必使用 `encoding='cp950', char_decode_errors='replace'`
+- 舊診所系統的 patdb.dbf header 的 language driver byte 常有誤
+- 部分紀錄可能有微小損壞（用 `replace` 將無法解碼 byte 換成 `�`）
+- 62,981 筆中約 730 筆有少許異常（1.2%），不影響主流程
+
+**recno 對應**：DBF 的列號（1-indexed），等於病歷號
+
+**執行方式**：
+```bash
+python patdb_query.py
+```
+
+**部署到診所**：修改 `config.json` 中的 `patdbPath` 為 UNC 路徑（如 `\\\\SERVER\\CLINIC\\DATA\\patdb.dbf`）
+
+---
+
+## Job A / Job B 拆解（v1.8）
+
+### 設計動機
+`/api/cleanup` 原本把「標記過期」+ 「搬移 archive」 + 「刪除原表」三件事綁在同一個 transaction。缺點：
+- 兩件事頻率需求不同（Job A 每 5 分鐘，Job B 每天一次）
+- archive 搬移資料量大，5 分鐘跑一次浪費資源且可能鎖表影響正常 API
+
+### 拆解後的 API
+
+#### POST /api/cleanup/mark-expired（Job A，每 5 分鐘）
+只做一件事：將 `pending` + 過期的驗證碼標記為 `expired`。獨立 transaction，快速穩定。
+```json
+Request: POST /api/cleanup/mark-expired
+Header: x-cleanup-api-key: YOUR_KEY
+Response: { "ok": true, "data": { "updated": 3 } }
+```
+
+#### POST /api/cleanup/archive-old（Job B，每天）
+將 `used/expired/failed` 記錄搬移到 archive 表（原表刪除），同一 transaction 確保原子性。
+```json
+Request: POST /api/cleanup/archive-old
+Header: x-cleanup-api-key: YOUR_KEY
+Response: { "ok": true, "data": { "archived": 10, "deleted": 10 } }
+```
+
+#### /api/cleanup（保留，向後相容）
+原本的合併版本仍保留，現有呼叫不受影響。
+
+---
+
+## GitHub Actions 排程（.github/workflows/cleanup-jobs.yml）
+
+| Job | 頻率 | 對應 API |
+|-----|------|----------|
+| mark-expired | 每 5 分鐘 | `/api/cleanup/mark-expired` |
+| archive-old | 每天 02:00 UTC（台灣 10:00）| `/api/cleanup/archive-old` |
+
+**需要的 GitHub Secrets**：
+- `API_BASE_URL`：https://lineid-code.zeabur.app
+- `CLEANUP_API_KEY`：現有的環境變數值
+
+**workflow_dispatch**：可在 GitHub 網頁上手動觸發，適合測試。
+
+**注意**：GitHub Actions cron 不保證精確觸發（可能延遲 1-2 分鐘），對驗證碼（5 分鐘效期）可接受。
