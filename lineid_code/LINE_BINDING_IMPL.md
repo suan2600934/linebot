@@ -1,6 +1,62 @@
 # LINE 帳號綁定系統 — 實作紀錄
 
-## 📅 最後更新：2026-06-27（v1.4）
+## 📅 最後更新：2026-06-28（v1.5）
+
+---
+
+## 🚨 Zeabur 部署踩雷紀錄（2026-06-28）
+
+### 雷點一：DATABASE_URL 環境變數未設定 → Missing DATABASE_URL
+**症狀**：`[initPool] failed: Error: Missing DATABASE_URL` → 容器不斷重啟，BackOff
+**原因**：Zeabur 環境變數裡沒有設定 DATABASE_URL
+**解法**：在 Zeabur 環境變數新增（值從 Supabase Dashboard → Connection Pooling 取得）：
+```
+DATABASE_URL=postgresql://postgres.kbpyxboleoefwvdnjcod:awSDlKU0zaobAa7D@aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres
+```
+
+### 雷點二：new URL() 解析 DATABASE_URL → TypeError: Invalid URL
+**症狀**：`TypeError: Invalid URL` 在 `initPool` 階段
+**原因**：`new URL()` 遇到密碼含特殊字元（當時密碼有 `@`）或 URL 格式不符預期時直接拋錯
+**解法**：改用 regex 直接解析 connection string，不依賴 URL 物件：
+```js
+const re = /^postgres(?:ql)?:\/\/([^:]+):([^@]+)@([^:\/]+):(\d+)\/([^?]+)$/;
+const match = connStr.match(re);
+// 同時支援 postgres:// 和 postgresql://，database 只取 ? 之前的部分
+```
+
+### 雷點三：IPv6 ENETUNREACH → Supabase DNS 返回 IPv6 但容器不支援
+**症狀**：`connect ENETUNREACH 2406:da18:...:5432`（IPv6 address）
+**原因**：Zeabur 容器網路不支援 IPv6 出去，Supabase DNS 返回 AAAA 記錄，pg 拿到 IPv6 address
+**解法**：
+1. 使用 Supabase **Connection Pooler**（port 6543），由 Pooler 處理對外的連線
+2. Pooler 的 host 是 `aws-1-ap-southeast-1.pooler.supabase.com`，不會返回 IPv6
+3. 如果必須直接連 5432：在 code 裡做 DNS resolve4 並 fallback 到硬編碼 IPv4
+
+### 雷點四：兩個 Node.js service 綁同一 port → 只有一個能搶到
+**症狀**：`/health` 和 `/api/*` 都 404，請求被主要 LINE Bot 截走
+**原因**：主要 Bot (index.js) 和 lineid_code 同時部署但綁相同 port，先啟動的搶贏
+**解法**：將 lineid_code 改成不同 port（如 8081），在 zeabur.json 和 code 裡同步修改：
+```js
+const PORT = parseInt(process.env.PORT || '8081', 10);
+```
+
+---
+
+## 正確的 Zeabur 部署檢查清單
+
+1. **確認有設定 `DATABASE_URL`**，值為 Pooler URL（port 6543），格式：
+   ```
+   postgresql://postgres.PROJECT_REF:PASSWORD@aws-REGION.pooler.supabase.com:6543/postgres
+   ```
+2. **確認環境變數有設定這些必要值**：
+   - `APP_KEY_V1`
+   - `APP_KEY_CURRENT_VERSION`
+   - `CLEANUP_API_KEY`
+   - `VERIFY_CODE_TTL_MINUTES`
+   - `VERIFY_MAX_ATTEMPTS`
+   - `DATABASE_URL`
+3. **確認程式裡預設的 PORT 與 Zeabur 設定一致**，避免被平台覆蓋
+4. **使用 Connection Pooler**（port 6543）而非直接 5432，適合 Serverless/容器環境
 
 ---
 

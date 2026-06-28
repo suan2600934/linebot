@@ -1,6 +1,18 @@
-# 敏感資料（不上傳）
+# 環境變數（包含機密資料）
 .env
+.env.local
+.env.production
+
+# 病患資料
 patdb.dbf
 patdb.docx
 *.dbf
 *.dby
+
+# 測試資料
+test-crypto.test.js
+test_verify_api.py
+
+# 開發產生的暫存檔
+*.log
+*.tmp
