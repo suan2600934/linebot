@@ -12,7 +12,6 @@ const {
 } = require('./crypto-utils');
 
 const app = express();
-app.use(express.json());
 
 app.get('/health', (req, res) => res.json({ ok: true }));
 
@@ -53,7 +52,7 @@ function badRequest(res, message) {
   return res.status(400).json({ ok: false, error: message });
 }
 
-app.post('/api/create-verify-code', async (req, res) => {
+app.post('/api/create-verify-code', express.json(), async (req, res) => {
   const { recno } = req.body || {};
 
   if (!recno || typeof recno !== 'string') {
@@ -105,7 +104,7 @@ app.post('/api/create-verify-code', async (req, res) => {
   }
 });
 
-app.post('/api/verify', async (req, res) => {
+app.post('/api/verify', express.json(), async (req, res) => {
   const { code, lineUserId } = req.body || {};
 
   if (!code || !lineUserId) {
@@ -198,7 +197,7 @@ app.post('/api/verify', async (req, res) => {
   }
 });
 
-app.post('/api/cleanup', async (req, res) => {
+app.post('/api/cleanup', express.json(), async (req, res) => {
   const providedKey = req.get('x-cleanup-api-key');
   if (!process.env.CLEANUP_API_KEY || providedKey !== process.env.CLEANUP_API_KEY) {
     return res.status(401).json({ ok: false, error: '未授權' });
