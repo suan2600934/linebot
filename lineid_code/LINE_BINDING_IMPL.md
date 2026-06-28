@@ -42,7 +42,12 @@ const PORT = parseInt(process.env.PORT || '8081', 10);
 
 ---
 
-## 正確的 Zeabur 部署檢查清單
+### 雷點五：全域 express.json() 破壞 LINE webhook signature 驗證
+**症狀**：`SignatureValidationFailed`，LINE Console 顯示 500 Internal Server Error
+**原因**：`app.use(express.json())` 在所有 route 之前先把 body 解析成 JSON，LINE middleware 因此拿不到原始 body 驗 signature
+**解法**：移除全域 middleware，個別 API route 加上 `express.json()`
+
+---
 
 1. **確認有設定 `DATABASE_URL`**，值為 Pooler URL（port 6543），格式：
    ```
