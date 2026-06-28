@@ -3,6 +3,7 @@
 const express = require('express');
 const { Pool } = require('pg');
 const crypto = require('crypto');
+const { Client, middleware } = require('@line/bot-sdk');
 const {
   hmacSha256,
   encrypt,
@@ -35,6 +36,11 @@ async function initPool() {
   });
   console.log('[pool] initialized, host:', match[3]);
 }
+
+const lineClient = new Client({
+  channelSecret: process.env.LINE_CHANNEL_SECRET,
+  channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
+});
 
 const VERIFY_CODE_TTL_MINUTES = parseInt(process.env.VERIFY_CODE_TTL_MINUTES || '5', 10);
 const VERIFY_MAX_ATTEMPTS = parseInt(process.env.VERIFY_MAX_ATTEMPTS || '3', 10);
@@ -246,6 +252,52 @@ app.post('/api/cleanup', async (req, res) => {
     client.release();
   }
 });
+
+app.post('/api/line-webhook',
+  express.raw({ type: 'application/json' }),
+  middleware({ channelSecret: process.env.LINE_CHANNEL_SECRET }),
+  async (req, res) => {
+    const events = req.body.events || [];
+
+    const results = await Promise.all(events.map(async (event) => {
+      if (event.type !== 'message' || event.message.type !== 'text') return;
+
+      const userId = event.source.userId;
+      const code = event.message.text.trim();
+
+      if (!userId) return;
+
+      if (/^\d{6}$/.test(code)) {
+        try {
+          const baseUrl = process.env.API_BASE_URL.replace(/\/$/, '');
+          const verifyRes = await fetch(`${baseUrl}/api/verify`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code, lineUserId: userId }),
+          });
+          const result = await verifyRes.json();
+          const msg = result.ok
+            ? '✅ 綁定成功！您的手機已與診所系統連結，未來可透過 LINE 查詢看診進度。'
+            : `❌ 綁定失敗：${result.error}`;
+          await lineClient.replyMessage(event.replyToken, { type: 'text', text: msg });
+        } catch (err) {
+          console.error('[line-webhook] verify error:', err);
+          await lineClient.replyMessage(event.replyToken, {
+            type: 'text',
+            text: '❌ 系統錯誤，請稍後再試或聯繫診所。',
+          });
+        }
+      } else {
+        await lineClient.replyMessage(event.replyToken, {
+          type: 'text',
+          text: '請輸入收到的 6 位數驗證碼，若無驗證碼請至櫃台索取。',
+        });
+      }
+    }));
+
+    res.json({ ok: true });
+  }
+);
 
 const PORT = parseInt(process.env.PORT || '8081', 10);
 if (require.main === module) {
