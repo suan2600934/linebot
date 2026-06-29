@@ -43,6 +43,7 @@ const lineClient = new Client({
 
 const VERIFY_CODE_TTL_MINUTES = parseInt(process.env.VERIFY_CODE_TTL_MINUTES || '5', 10);
 const VERIFY_MAX_ATTEMPTS = parseInt(process.env.VERIFY_MAX_ATTEMPTS || '3', 10);
+const API_BASE_URL = (process.env.API_BASE_URL || 'http://localhost:8081').replace(/\/$/, '');
 
 function generateCode() {
   return String(crypto.randomInt(0, 1000000)).padStart(6, '0');
@@ -318,12 +319,354 @@ app.post('/api/cleanup', express.json(), async (req, res) => {
   }
 });
 
+// 查詢綁定資料（供主程式 LINE Bot 呼叫）
+app.get('/api/query-bindings', async (req, res) => {
+  const { lineUserId } = req.query || {};
+  
+  if (!lineUserId) {
+    return res.status(400).json({ ok: false, error: '缺少 lineUserId' });
+  }
+  
+  const client = await pool.connect();
+  try {
+    const userIdHash = hmacSha256(lineUserId);
+    
+    const { rows } = await client.query(
+      `SELECT lul.id as link_id, lul.encrypted_recno, lul.key_version, lul.linked_at,
+              lul.status
+         FROM line_user_links lul
+        WHERE lul.user_id_hash = $1
+          AND lul.status = 'active'
+        ORDER BY lul.linked_at DESC`,
+      [userIdHash]
+    );
+    
+    if (rows.length === 0) {
+      return res.json({ ok: true, data: [] });
+    }
+    
+    let displayName = 'LINE 用戶';
+    try {
+      const profile = await lineClient.getProfile(lineUserId);
+      displayName = profile.displayName || displayName;
+    } catch (profileErr) {
+      console.error('[query-bindings] getProfile error:', profileErr.message);
+    }
+    
+    const bindings = rows.map(row => {
+      let recno = '********';
+      try {
+        recno = decrypt(row.encrypted_recno, row.key_version);
+        recno = recno.slice(0, 4) + '****' + recno.slice(-2);
+      } catch (e) {
+        console.error('[query-bindings] decrypt error:', e.message);
+      }
+      return {
+        link_id: row.link_id,
+        recno,
+        display_name: displayName,
+        linked_at: row.linked_at,
+        status: row.status
+      };
+    });
+    
+    return res.json({ ok: true, data: bindings });
+  } catch (err) {
+    console.error('[query-bindings] error:', err);
+    return res.status(500).json({ ok: false, error: '系統錯誤,請稍後再試' });
+  } finally {
+    client.release();
+  }
+});
+
+// ── LINE Postback 處理 ──
+async function handlePostback(event) {
+  const userId = event.source.userId;
+  if (!userId) return;
+
+  const rawData = event.postback.data || '';
+  const params = new URLSearchParams(rawData);
+  const action = params.get('action');
+
+  switch (action) {
+    case 'query_bindings':
+      return handleQueryBindings(event.replyToken, userId);
+    case 'unbind_confirm':
+      return handleUnbindConfirm(event.replyToken, userId, params.get('link_id'));
+    case 'unbind_execute':
+      return handleUnbindExecute(event.replyToken, userId, params.get('link_id'));
+    case 'unbind_cancel':
+      return handleUnbindCancel(event.replyToken);
+    default:
+      return lineClient.replyMessage(event.replyToken, {
+        type: 'text',
+        text: '未知的操作，請重新點選選單。',
+      });
+  }
+}
+
+async function handleQueryBindings(replyToken, userId) {
+  const client = await pool.connect();
+  try {
+    const userIdHash = hmacSha256(userId);
+    const { rows } = await client.query(
+      `SELECT id as link_id, encrypted_recno, key_version, linked_at
+         FROM line_user_links
+        WHERE user_id_hash = $1 AND status = 'active'
+        ORDER BY linked_at DESC`,
+      [userIdHash]
+    );
+
+    let displayName = 'LINE 用戶（名稱取得失敗）';
+    try {
+      const profile = await lineClient.getProfile(userId);
+      displayName = profile.displayName || displayName;
+    } catch (e) {
+      console.error('[query_bindings] getProfile error:', e.message);
+    }
+
+    if (rows.length === 0) {
+      return lineClient.replyMessage(replyToken, {
+        type: 'text',
+        text: '目前沒有綁定任何就醫帳號。\n若有疑問請洽櫃台。',
+      });
+    }
+
+    const linkedAt = (date) => {
+      const d = new Date(date);
+      const fmt = (n) => n.toString().padStart(2, '0');
+      const year = d.getFullYear();
+      const month = d.getMonth() + 1;
+      const day = d.getDate();
+      const hour = d.getHours();
+      const min = fmt(d.getMinutes());
+      const ampm = hour < 12 ? '上午' : '下午';
+      const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+      return `${year}年${month}月${day}日 ${ampm}${h12}:${min} 綁定`;
+    };
+
+    const bubbles = rows.map((row) => {
+      let recnoMasked = '****';
+      try {
+        const recno = decrypt(row.encrypted_recno, row.key_version);
+        recnoMasked = recno.slice(0, 4) + '****' + recno.slice(-2);
+      } catch (e) {
+        console.error('[query_bindings] decrypt error:', e.message);
+      }
+
+      return {
+        type: 'bubble',
+        body: {
+          type: 'box',
+          layout: 'vertical',
+          contents: [
+            { type: 'text', text: displayName, weight: 'bold', size: 'md' },
+            { type: 'text', text: `就醫卡號：${recnoMasked}`, margin: '8px', size: 'sm', color: '#555555' },
+            { type: 'text', text: linkedAt(row.linked_at), margin: '4px', size: 'xs', color: '#888888' },
+            { type: 'text', text: '點「查詢就醫資訊」查看詳情', margin: '12px', size: 'xs', color: '#0088FF' },
+          ],
+        },
+      };
+    });
+
+    return lineClient.replyMessage(replyToken, {
+      type: 'flex',
+      altText: '您的就醫帳號綁定列表',
+      contents: { type: 'carousel', contents: bubbles },
+    });
+  } catch (err) {
+    console.error('[query_bindings] error:', err);
+    return lineClient.replyMessage(replyToken, {
+      type: 'text',
+      text: '❌ 系統錯誤，請稍後再試。',
+    });
+  } finally {
+    client.release();
+  }
+}
+
+async function handleUnbindConfirm(replyToken, userId, linkId) {
+  if (!linkId) {
+    return lineClient.replyMessage(replyToken, {
+      type: 'text',
+      text: '❌ 參數錯誤，請重新操作。',
+    });
+  }
+
+  return lineClient.replyMessage(replyToken, {
+    type: 'flex',
+    altText: '確認取消綁定',
+    contents: {
+      type: 'bubble',
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          { type: 'text', text: '⚠️ 確認取消綁定', weight: 'bold', size: 'lg' },
+          { type: 'text', text: '解除後將無法透過 LINE 查詢看診進度，需重新至櫃台綁定。', margin: '12px', size: 'sm', color: '#555555', wrap: true },
+        ],
+      },
+      footer: {
+        type: 'box',
+        layout: 'horizontal',
+        contents: [
+          {
+            type: 'button',
+            action: {
+              type: 'postback',
+              label: '是，解除綁定',
+              displayText: '是，解除綁定',
+              data: `action=unbind_execute&link_id=${linkId}`,
+            },
+            style: 'primary',
+            color: '#CC0000',
+          },
+          {
+            type: 'button',
+            action: {
+              type: 'postback',
+              label: '否，返回',
+              displayText: '否，返回',
+              data: 'action=query_bindings',
+            },
+            style: 'secondary',
+          },
+        ],
+      },
+    },
+  });
+}
+
+async function handleUnbindExecute(replyToken, userId, linkId) {
+  if (!linkId) {
+    return lineClient.replyMessage(replyToken, {
+      type: 'text',
+      text: '❌ 參數錯誤，請重新操作。',
+    });
+  }
+
+  const client = await pool.connect();
+  try {
+    const userIdHash = hmacSha256(userId);
+
+    const { rows } = await client.query(
+      `SELECT id, user_id_hash FROM line_user_links
+        WHERE id = $1 AND status = 'active' FOR UPDATE`,
+      [linkId]
+    );
+
+    if (rows.length === 0) {
+      return lineClient.replyMessage(replyToken, {
+        type: 'text',
+        text: '❌ 找不到此綁定記錄，可能已解除。',
+      });
+    }
+
+    if (rows[0].user_id_hash !== userIdHash) {
+      return lineClient.replyMessage(replyToken, {
+        type: 'text',
+        text: '❌ 無權限操作此綁定。',
+      });
+    }
+
+    await client.query('BEGIN');
+
+    await client.query(
+      `UPDATE line_user_links SET status = 'unbound' WHERE id = $1`,
+      [linkId]
+    );
+
+    await client.query(
+      `INSERT INTO line_user_links_history (link_id, user_id_hash, recno_hash, action)
+       VALUES ($1, $2, (SELECT recno_hash FROM line_user_links WHERE id = $1), 'unbind')`,
+      [linkId, userIdHash]
+    );
+
+    await client.query('COMMIT');
+
+    return lineClient.replyMessage(replyToken, {
+      type: 'text',
+      text: '✅ 已解除綁定。未來如需使用 LINE 查詢功能，請至櫃台重新綁定。',
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('[unbind_execute] error:', err);
+    return lineClient.replyMessage(replyToken, {
+      type: 'text',
+      text: '❌ 系統錯誤，請稍後再試。',
+    });
+  } finally {
+    client.release();
+  }
+}
+
+async function handleUnbindCancel(replyToken) {
+  return lineClient.replyMessage(replyToken, {
+    type: 'text',
+    text: '已取消',
+  });
+}
+
+// ─── 內部 API：取消綁定（供櫃台系統呼叫）───
+app.post('/api/unbind', express.json(), async (req, res) => {
+  const { linkId } = req.body || {};
+
+  if (!linkId) {
+    return badRequest(res, '缺少必填欄位 linkId');
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const { rows } = await client.query(
+      `SELECT id, user_id_hash, recno_hash, status FROM line_user_links
+        WHERE id = $1 FOR UPDATE`,
+      [linkId]
+    );
+
+    if (rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ ok: false, error: '找不到此綁定記錄' });
+    }
+
+    if (rows[0].status !== 'active') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ ok: false, error: `此綁定已於先前解除（status=${rows[0].status}）` });
+    }
+
+    await client.query(
+      `UPDATE line_user_links SET status = 'unbound' WHERE id = $1`,
+      [linkId]
+    );
+
+    await client.query(
+      `INSERT INTO line_user_links_history (link_id, user_id_hash, recno_hash, action)
+       VALUES ($1, $2, $3, 'unbind')`,
+      [linkId, rows[0].user_id_hash, rows[0].recno_hash]
+    );
+
+    await client.query('COMMIT');
+
+    return res.json({ ok: true, data: { linkId, status: 'unbound' } });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('[unbind] error:', err);
+    return res.status(500).json({ ok: false, error: '系統錯誤,請稍後再試' });
+  } finally {
+    client.release();
+  }
+});
+
 app.post('/api/line-webhook',
   middleware({ channelSecret: process.env.LINE_CHANNEL_SECRET }),
   async (req, res) => {
     const events = req.body.events || [];
 
     const results = await Promise.all(events.map(async (event) => {
+      if (event.type === 'postback') {
+        return handlePostback(event);
+      }
       if (event.type !== 'message' || event.message.type !== 'text') return;
 
       const userId = event.source.userId;
@@ -333,8 +676,7 @@ app.post('/api/line-webhook',
 
       if (/^\d{6}$/.test(code)) {
         try {
-          const baseUrl = process.env.API_BASE_URL.replace(/\/$/, '');
-          const verifyRes = await fetch(`${baseUrl}/api/verify`, {
+          const verifyRes = await fetch(`${API_BASE_URL}/api/verify`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ code, lineUserId: userId }),
