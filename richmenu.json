@@ -12,7 +12,7 @@
         "x": 0,
         "y": 0,
         "width": 833,
-        "height": 843
+        "height": 562
       },
       "action": {
         "type": "postback",
@@ -25,7 +25,7 @@
         "x": 833,
         "y": 0,
         "width": 834,
-        "height": 843
+        "height": 562
       },
       "action": {
         "type": "postback",
@@ -38,7 +38,7 @@
         "x": 1667,
         "y": 0,
         "width": 833,
-        "height": 843
+        "height": 562
       },
       "action": {
         "type": "postback",
@@ -49,22 +49,22 @@
     {
       "bounds": {
         "x": 0,
-        "y": 843,
+        "y": 562,
         "width": 833,
-        "height": 843
+        "height": 562
       },
       "action": {
         "type": "postback",
-        "data": "action=share_line",
-        "label": "分享官方 LINE"
+        "data": "action=queue_status",
+        "label": "看診進度"
       }
     },
     {
       "bounds": {
         "x": 833,
-        "y": 843,
+        "y": 562,
         "width": 834,
-        "height": 843
+        "height": 562
       },
       "action": {
         "type": "postback",
@@ -75,14 +75,53 @@
     {
       "bounds": {
         "x": 1667,
-        "y": 843,
+        "y": 562,
         "width": 833,
-        "height": 843
+        "height": 562
       },
       "action": {
         "type": "postback",
         "data": "action=child_vaccine",
         "label": "兒童預防注射"
+      }
+    },
+    {
+      "bounds": {
+        "x": 0,
+        "y": 1124,
+        "width": 833,
+        "height": 562
+      },
+      "action": {
+        "type": "postback",
+        "data": "action=share_line",
+        "label": "分享LINE"
+      }
+    },
+    {
+      "bounds": {
+        "x": 833,
+        "y": 1124,
+        "width": 834,
+        "height": 562
+      },
+      "action": {
+        "type": "postback",
+        "data": "action=query_bindings",
+        "label": "查詢就醫資訊"
+      }
+    },
+    {
+      "bounds": {
+        "x": 1667,
+        "y": 1124,
+        "width": 833,
+        "height": 562
+      },
+      "action": {
+        "type": "postback",
+        "data": "action=hours_info",
+        "label": "門診時間"
       }
     }
   ]

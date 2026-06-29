@@ -296,6 +296,9 @@ async function handleTextMessage(event) {
 // 處理按鍵回傳
 async function handlePostback(event) {
   const data = event.postback.data;
+  const params = new URLSearchParams(data);
+  const action = params.get('action');
+  const linkId = params.get('link_id');
   let replyMessage;
   
   if (data === 'action=share_line') {
@@ -319,6 +322,18 @@ async function handlePostback(event) {
     replyMessage = await getChildVaccine();
   } else if (data === 'action=queue_status') {
     replyMessage = await getQueueStatus();
+  } else if (data === 'action=query_bindings') {
+    replyMessage = await handleQueryBindings(event);
+  } else if (data === 'action=view_medical_info' && linkId) {
+    replyMessage = await handleViewMedicalInfo(event, linkId);
+  } else if (action === 'unbind_confirm' && linkId) {
+    replyMessage = await handleUnbindConfirm(event, linkId);
+  } else if (action === 'unbind_execute' && linkId) {
+    replyMessage = await handleUnbindExecute(event, linkId);
+  } else if (data === 'action=unbind_cancel') {
+    replyMessage = await handleUnbindCancel(event);
+  } else if (data === 'action=coming_soon') {
+    replyMessage = { type: 'text', text: '此功能正在施工中，敬請期待！' };
   }
 
   await messagingApiClient.replyMessage({
@@ -894,6 +909,219 @@ async function getQueueStatus() {
     type: 'text',
     text: `【看診進度查詢】\n\n醫師：${q.doctor_name || '周見成'}\n診間：${q.roomn || '內科'}\n${status}\n等候人數：${q.wait_count || 0} 人\n\n最後更新：${q.last_updated ? new Date(q.last_updated).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' }) : '-'}\n\n⚠️ 僅供參考，實際以診所現場為準`
   };
+}
+
+// 查詢就醫資訊（綁定查詢）
+async function handleQueryBindings(event) {
+  const lineUserId = event.source.userId;
+  
+  try {
+    const baseUrl = process.env.LINEID_CODE_URL || 'https://lineid-code.zeabur.app';
+    const apiRes = await fetch(`${baseUrl}/api/query-bindings?lineUserId=${encodeURIComponent(lineUserId)}`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const result = await apiRes.json();
+    
+    if (!result.ok || !result.data || result.data.length === 0) {
+      return {
+        type: 'text',
+        text: '【查詢就醫資訊】\n\n您尚未綁定就醫身份。\n\n請至診所櫃台索取驗證碼進行綁定。'
+      };
+    }
+    
+    const bindings = result.data;
+    const displayName = bindings[0].display_name || 'LINE 用戶';
+    
+    const bubbles = bindings.map((b) => {
+      const linkedAt = new Date(b.linked_at).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
+      return {
+        type: 'bubble',
+        size: 'mega',
+        header: {
+          type: 'box',
+          layout: 'vertical',
+          contents: [
+            { type: 'text', text: '🏥 就醫綁定資料', weight: 'bold', color: '#1DA1F2', size: 'lg' }
+          ]
+        },
+        body: {
+          type: 'box',
+          layout: 'vertical',
+          contents: [
+            { type: 'text', text: `LINE 用戶：${displayName}`, color: '#333333', size: 'md', wrap: true },
+            { type: 'text', text: `病歷號：${b.recno}`, color: '#666666', size: 'md', margin: 'md' },
+            { type: 'text', text: `綁定日期：${linkedAt}`, color: '#666666', size: 'md', margin: 'sm' }
+          ]
+        },
+        footer: {
+          type: 'box',
+          layout: 'horizontal',
+          contents: [
+            {
+              type: 'button',
+              action: { type: 'postback', label: '選擇', data: `action=view_medical_info&link_id=${b.link_id}` },
+              style: 'primary',
+              color: '#1DA1F2'
+            }
+          ]
+        }
+      };
+    });
+    
+    return {
+      type: 'flex',
+      altText: '【查詢就醫資訊】您的綁定資料',
+      contents: {
+        type: 'carousel',
+        contents: bubbles
+      }
+    };
+  } catch (err) {
+    console.error('[handleQueryBindings] error:', err);
+    return {
+      type: 'text',
+      text: '❌ 無法查詢就醫資訊，請稍後再試或致電診所 (05) 260-0934'
+    };
+  }
+}
+
+// 選擇就醫資訊項目（view_medical_info）
+async function handleViewMedicalInfo(event, linkId) {
+  return {
+    type: 'flex',
+    altText: '請選擇要查詢的項目',
+    contents: {
+      type: 'bubble',
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          { type: 'text', text: '🏥 請選擇要查詢的項目', weight: 'bold', size: 'lg', margin: 'md' },
+          { type: 'text', text: '請點選下方按鈕', color: '#666666', size: 'sm', margin: 'sm' }
+        ]
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          {
+            type: 'button',
+            action: { type: 'postback', label: '❌ 取消綁定', data: `action=unbind_confirm&link_id=${linkId}` },
+            style: 'secondary',
+            color: '#FF6B6B',
+            margin: 'sm'
+          },
+          {
+            type: 'button',
+            action: { type: 'postback', label: '📋 欠單查詢（施工中）', data: 'action=coming_soon', style: 'secondary' },
+            margin: 'sm'
+          },
+          {
+            type: 'button',
+            action: { type: 'postback', label: '💉 抽血報告（施工中）', data: 'action=coming_soon', style: 'secondary' },
+            margin: 'sm'
+          },
+          {
+            type: 'button',
+            action: { type: 'postback', label: '🩺 慢性病資訊（施工中）', data: 'action=coming_soon', style: 'secondary' },
+            margin: 'sm'
+          },
+          {
+            type: 'button',
+            action: { type: 'postback', label: '💊 領藥時間（施工中）', data: 'action=coming_soon', style: 'secondary' },
+            margin: 'sm'
+          }
+        ]
+      }
+    }
+  };
+}
+
+// 取消綁定 - 確認（串接 lineid_code）
+async function handleUnbindConfirm(event, linkId) {
+  const baseUrl = process.env.LINEID_CODE_URL || 'https://lineid-code.zeabur.app';
+  const lineUserId = event.source.userId;
+  
+  try {
+    const apiRes = await fetch(`${baseUrl}/api/query-bindings?lineUserId=${encodeURIComponent(lineUserId)}`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const result = await apiRes.json();
+    
+    const binding = result.data?.find(b => b.link_id == linkId);
+    
+    return {
+      type: 'flex',
+      altText: '確認取消綁定',
+      contents: {
+        type: 'bubble',
+        body: {
+          type: 'box',
+          layout: 'vertical',
+          contents: [
+            { type: 'text', text: '⚠️ 確認取消綁定', weight: 'bold', size: 'lg' },
+            { type: 'text', text: binding ? `就醫卡號：${binding.recno}` : '', margin: '12px', size: 'sm', color: '#555555', wrap: true },
+            { type: 'text', text: '解除後將無法透過 LINE 查詢看診進度，需重新至櫃台綁定。', margin: '12px', size: 'sm', color: '#555555', wrap: true }
+          ]
+        },
+        footer: {
+          type: 'box',
+          layout: 'horizontal',
+          contents: [
+            {
+              type: 'button',
+              action: { type: 'postback', label: '是，解除綁定', data: `action=unbind_execute&link_id=${linkId}` },
+              style: 'primary',
+              color: '#CC0000'
+            },
+            {
+              type: 'button',
+              action: { type: 'postback', label: '否，返回', data: 'action=query_bindings', style: 'secondary' }
+            }
+          ]
+        }
+      }
+    };
+  } catch (err) {
+    console.error('[handleUnbindConfirm] error:', err);
+    return { type: 'text', text: '❌ 系統錯誤，請稍後再試。' };
+  }
+}
+
+// 取消綁定 - 執行（串接 lineid_code）
+async function handleUnbindExecute(event, linkId) {
+  const baseUrl = process.env.LINEID_CODE_URL || 'https://lineid-code.zeabur.app';
+  
+  try {
+    const apiRes = await fetch(`${baseUrl}/api/unbind`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ linkId: parseInt(linkId) })
+    });
+    const result = await apiRes.json();
+    
+    if (result.ok) {
+      return {
+        type: 'text',
+        text: '✅ 已解除綁定。未來如需使用 LINE 查詢功能，請至櫃台重新綁定。'
+      };
+    } else {
+      return {
+        type: 'text',
+        text: `❌ 解除綁定失敗：${result.error || '未知錯誤'}`
+      };
+    }
+  } catch (err) {
+    console.error('[handleUnbindExecute] error:', err);
+    return { type: 'text', text: '❌ 系統錯誤，請稍後再試。' };
+  }
+}
+
+// 取消綁定 - 取消
+async function handleUnbindCancel(event) {
+  return { type: 'text', text: '已取消解除綁定操作。' };
 }
 
 // 健康檢查
