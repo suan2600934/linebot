@@ -457,9 +457,14 @@ Flex Carousel（顯示所有綁定，藍色「選擇」按鈕）
 - **lineid-code**（驗證碼 API）：部署 `line-binding` 分支
 - 兩分支現已同步（line-binding 已 merge master）
 
-### 待未來實作
-- [ ] 欠單查詢
-- [ ] 抽血報告
-- [ ] 慢性病資訊
-- [ ] 領藥時間
-- [ ] patdb_query.py（櫃台端查詢/取消綁定）
+### 待未來實作（修改 index.js 主程式）
+
+| 功能 | 修改檔案 | 說明 |
+|------|----------|------|
+| 欠單查詢 | `index.js` | 新增 `handleDebtQuery()`，串接 lineid_code 或直接查詢 Supabase |
+| 抽血報告 | `index.js` | 新增 `handleBloodReportQuery()` |
+| 慢性病資訊 | `index.js` | 新增 `handleChronicDiseaseInfo()` |
+| 領藥時間 | `index.js` | 新增 `handleMedicationReminder()` |
+| patdb_query.py | `lineid_code/patdb_query.py` | 櫃台端查詢/取消綁定工具（需解密 + 對照本地 patdb.dbf） |
+
+**備註**：這些功能需要先確認資料來源（Supabase 資料表或本地資料庫），再實作對應的 API 和 Flex Message 介面。
