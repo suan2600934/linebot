@@ -9,6 +9,8 @@
     "@line/bot-sdk": "^9.5.0",
     "@supabase/supabase-js": "^2.39.0",
     "axios": "^1.6.0",
-    "cors": "^2.8.5"
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "ws": "^8.16.0"
   }
 }
