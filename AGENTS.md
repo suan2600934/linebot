@@ -262,8 +262,52 @@ git push origin --delete line-binding
 
 ---
 
-**最後更新**：2026-06-29
-**狀態**：LINE 取消綁定功能實作完成，準備部署測試
+**最後更新**：2026-06-29 21:10
+**狀態**：LINE 取消綁定功能實作完成，已通過測試
+
+---
+
+## 📅 2026-06-29 工作進度
+
+### ✅ 取消綁定功能實作完成
+
+#### 問題修復經過
+- **LINE Flex Message 400 錯誤**：按鈕的 `style`/`color` 欄位在 footer 多按鈕佈局中會觸發 LINE API 400 錯誤，改為移除這些欄位
+- **handlePostback 條件判斷錯誤**：`data === 'action=view_medical_info'` 應改為 `action === 'view_medical_info'`（使用 URLSearchParams 解析後的 action 變數）
+- **Zeabur 部署問題**：根目錄缺少 `package.json`，導致 `express`、`dotenv` 等依賴未安裝
+- **分支不一致**：`line-binding` 分支落後 master，需手動 merge
+
+#### Flex Message 格式注意
+- `style`/`color` 欄位在 footer 多按鈕佈局中會造成 LINE 400 錯誤
+- 單按鈕時可使用，複數按鈕時需移除
+
+#### 已完成的流程
+```
+圖文選單「查詢就醫資訊」(action=query_bindings)
+    ↓
+Flex Carousel（顯示所有綁定，藍色「選擇」按鈕）
+    ↓
+點 [選擇] → Flex 選單（取消綁定 + 4個施工中）
+    ↓
+點 [取消綁定] → 二次確認
+    ↓
+點 [是，解除綁定] → ✅ 已解除綁定
+```
+
+#### 待未來實作
+- [ ] 欠單查詢（action=coming_soon）
+- [ ] 抽血報告（action=coming_soon）
+- [ ] 慢性病資訊（action=coming_soon）
+- [ ] 領藥時間（action=coming_soon）
+- [ ] patdb_query.py（櫃台端查詢/取消綁定）
+
+#### 重要 Commit 記錄（更新）
+| Commit | 說明 |
+|--------|------|
+| `2850ab9` | line-binding 實驗開始前的乾淨狀態 |
+| `73eda7e` | line-binding 和 master 最後共用的 commit |
+| `b74f1a8` | merge master into line-binding（解決衝突） |
+| `eaa0fcb` | restore blue primary style for 選擇 button |
 
 ---
 

@@ -1,6 +1,6 @@
 # LINE 帳號綁定系統 — 實作紀錄
 
-## 📅 最後更新：2026-06-28（v1.8）
+## 📅 最後更新：2026-06-29（v1.9）
 
 ---
 
@@ -415,3 +415,51 @@ Response: { "ok": true, "data": { "archived": 10, "deleted": 10 } }
 **workflow_dispatch**：可在 GitHub 網頁上手動觸發，適合測試。
 
 **注意**：GitHub Actions cron 不保證精確觸發（可能延遲 1-2 分鐘），對驗證碼（5 分鐘效期）可接受。
+
+---
+
+## 2026-06-29 更新（v1.9）：取消綁定功能實作完成
+
+### 實作內容
+
+#### LINE Bot Webhook（主程式 index.js）
+- 新增 `handleQueryBindings`：查詢已綁定就醫資訊，回覆 Flex Carousel
+- 新增 `handleViewMedicalInfo`：顯示就醫項目選單（取消綁定 + 4個施工中）
+- 新增 `handleUnbindConfirm`：二次確認 Flex
+- 新增 `handleUnbindExecute`：串接 lineid_code `/api/unbind` 執行解除
+- 新增 `handleUnbindCancel`：取消操作
+
+#### LINE Bot Flex Message 流程
+```
+圖文選單「查詢就醫資訊」(action=query_bindings)
+    ↓
+Flex Carousel（顯示所有綁定，藍色「選擇」按鈕）
+    ↓
+點 [選擇] → Flex 選單（取消綁定 + 4個施工中）
+    ↓
+點 [取消綁定] → 二次確認
+    ↓
+點 [是，解除綁定] → ✅ 已解除綁定
+```
+
+### 問題修復
+
+| 問題 | 原因 | 解法 |
+|------|------|------|
+| LINE Flex Message 400 錯誤 | 按鈕的 `style`/`color` 欄位在 footer 多按鈕佈局中會觸發 LINE API 400 錯誤 | 移除 `style`/`color`，單按鈕時可用 |
+| handlePostback 條件判斷錯誤 | `data === 'action=view_medical_info'` 永遠為 false（data 是 `action=view_medical_info&link_id=X`） | 改用 `action === 'view_medical_info'`（從 URLSearchParams 解析） |
+| Zeabur 部署失敗 | 根目錄缺少 `package.json`，`express` 等依賴未安裝 | 建立 `package.json` 並加入所有必要依賴 |
+| 分支不一致 | lineid_code 服務部署在 `line-binding` 分支，但新功能只在 `master` | merge master 到 line-binding |
+| 取消綁定點選無反應 | `unbind_confirm` 的 `style`/`color` 造成 LINE 400 錯誤 | 移除所有按鈕的 `style`/`color` |
+
+### Git 分支與部署
+- **linebot-mile**（主要 LINE Bot）：部署 `master` 分支
+- **lineid-code**（驗證碼 API）：部署 `line-binding` 分支
+- 兩分支現已同步（line-binding 已 merge master）
+
+### 待未來實作
+- [ ] 欠單查詢
+- [ ] 抽血報告
+- [ ] 慢性病資訊
+- [ ] 領藥時間
+- [ ] patdb_query.py（櫃台端查詢/取消綁定）
