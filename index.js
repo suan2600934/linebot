@@ -338,15 +338,20 @@ async function handlePostback(event) {
   }
 
   if (replyMessage) {
+    console.log('[handlePostback] replyToken:', event.replyToken.slice(0, 20) + '...');
+    console.log('[handlePostback] data:', data);
+    console.log('[handlePostback] action:', action, 'linkId:', linkId);
+    console.log('[handlePostback] full replyMessage:', JSON.stringify(replyMessage, null, 2).slice(0, 1000));
     try {
-      console.log('[handlePostback] replying with:', JSON.stringify(replyMessage).slice(0, 200));
       await messagingApiClient.replyMessage({
         replyToken: event.replyToken,
         messages: Array.isArray(replyMessage) ? replyMessage : [replyMessage]
       });
     } catch (err) {
       console.error('[handlePostback] replyMessage error:', err.message);
-      console.error('[handlePostback] error details:', JSON.stringify(err.response?.data || {}));
+      console.error('[handlePostback] error code:', err.code);
+      console.error('[handlePostback] status:', err.response?.status);
+      console.error('[handlePostback] error details:', JSON.stringify(err.response?.data || err.data || {}));
     }
   } else {
     console.error('[handlePostback] no replyMessage for data:', data);
