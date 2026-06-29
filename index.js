@@ -328,11 +328,12 @@ async function handlePostback(event) {
     console.log('[handlePostback] view_medical_info, linkId:', linkId);
     replyMessage = await handleViewMedicalInfo(event, linkId);
   } else if (action === 'unbind_confirm' && linkId) {
+    console.log('[handlePostback] entering unbind_confirm, linkId:', linkId);
     replyMessage = await handleUnbindConfirm(event, linkId);
   } else if (action === 'unbind_execute' && linkId) {
     replyMessage = await handleUnbindExecute(event, linkId);
-  } else if (data === 'action=unbind_cancel') {
-    replyMessage = await handleUnbindCancel(event);
+  } else if (data === 'action=unbind_cancel' || data === 'action=query_bindings') {
+    replyMessage = await handleQueryBindings(event);
   } else if (data === 'action=coming_soon') {
     replyMessage = { type: 'text', text: '此功能正在施工中，敬請期待！' };
   }
@@ -969,7 +970,9 @@ async function handleQueryBindings(event) {
           contents: [
             {
               type: 'button',
-              action: { type: 'postback', label: '選擇', data: 'action=view_medical_info&link_id=' + b.link_id }
+              action: { type: 'postback', label: '選擇', data: 'action=view_medical_info&link_id=' + b.link_id },
+              style: 'primary',
+              color: '#1DA1F2'
             }
           ]
         }
@@ -1072,13 +1075,11 @@ async function handleUnbindConfirm(event, linkId) {
           contents: [
             {
               type: 'button',
-              action: { type: 'postback', label: '是，解除綁定', data: `action=unbind_execute&link_id=${linkId}` },
-              style: 'primary',
-              color: '#CC0000'
+              action: { type: 'postback', label: '是，解除綁定', data: 'action=unbind_execute&link_id=' + linkId }
             },
             {
               type: 'button',
-              action: { type: 'postback', label: '否，返回', data: 'action=query_bindings', style: 'secondary' }
+              action: { type: 'postback', label: '否，返回', data: 'action=query_bindings' }
             }
           ]
         }
