@@ -954,21 +954,13 @@ async function handleQueryBindings(event) {
       const linkedAt = new Date(b.linked_at).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
       return {
         type: 'bubble',
-        size: 'mega',
-        header: {
-          type: 'box',
-          layout: 'vertical',
-          contents: [
-            { type: 'text', text: '🏥 就醫綁定資料', weight: 'bold', color: '#1DA1F2', size: 'lg' }
-          ]
-        },
         body: {
           type: 'box',
           layout: 'vertical',
           contents: [
-            { type: 'text', text: `LINE 用戶：${displayName}`, color: '#333333', size: 'md', wrap: true },
-            { type: 'text', text: `病歷號：${b.recno}`, color: '#666666', size: 'md', margin: 'md' },
-            { type: 'text', text: `綁定日期：${linkedAt}`, color: '#666666', size: 'md', margin: 'sm' }
+            { type: 'text', text: '🏥 ' + displayName, weight: 'bold', size: 'md' },
+            { type: 'text', text: '就醫卡號：' + b.recno, size: 'sm', color: '#666666', margin: '8px' },
+            { type: 'text', text: '綁定日期：' + linkedAt, size: 'sm', color: '#888888', margin: '4px' }
           ]
         },
         footer: {
@@ -977,9 +969,7 @@ async function handleQueryBindings(event) {
           contents: [
             {
               type: 'button',
-              action: { type: 'postback', label: '選擇', data: `action=view_medical_info&link_id=${b.link_id}` },
-              style: 'primary',
-              color: '#1DA1F2'
+              action: { type: 'postback', label: '選擇', data: 'action=view_medical_info&link_id=' + b.link_id }
             }
           ]
         }
@@ -1021,29 +1011,26 @@ async function handleViewMedicalInfo(event, linkId) {
       footer: {
         type: 'box',
         layout: 'vertical',
-        spacing: 'sm',
         contents: [
           {
             type: 'button',
-            action: { type: 'postback', label: '❌ 取消綁定', data: `action=unbind_confirm&link_id=${linkId}` },
-            style: 'secondary',
-            color: '#FF6B6B'
+            action: { type: 'postback', label: '❌ 取消綁定', data: 'action=unbind_confirm&link_id=' + linkId }
           },
           {
             type: 'button',
-            action: { type: 'postback', label: '📋 欠單查詢（施工中）', data: 'action=coming_soon', style: 'secondary' }
+            action: { type: 'postback', label: '📋 欠單查詢（施工中）', data: 'action=coming_soon' }
           },
           {
             type: 'button',
-            action: { type: 'postback', label: '💉 抽血報告（施工中）', data: 'action=coming_soon', style: 'secondary' }
+            action: { type: 'postback', label: '💉 抽血報告（施工中）', data: 'action=coming_soon' }
           },
           {
             type: 'button',
-            action: { type: 'postback', label: '🩺 慢性病資訊（施工中）', data: 'action=coming_soon', style: 'secondary' }
+            action: { type: 'postback', label: '🩺 慢性病資訊（施工中）', data: 'action=coming_soon' }
           },
           {
             type: 'button',
-            action: { type: 'postback', label: '💊 領藥時間（施工中）', data: 'action=coming_soon', style: 'secondary' }
+            action: { type: 'postback', label: '💊 領藥時間（施工中）', data: 'action=coming_soon' }
           }
         ]
       }
