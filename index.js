@@ -324,7 +324,7 @@ async function handlePostback(event) {
     replyMessage = await getQueueStatus();
   } else if (data === 'action=query_bindings') {
     replyMessage = await handleQueryBindings(event);
-  } else if (data === 'action=view_medical_info' && linkId) {
+  } else if (action === 'view_medical_info' && linkId) {
     replyMessage = await handleViewMedicalInfo(event, linkId);
   } else if (action === 'unbind_confirm' && linkId) {
     replyMessage = await handleUnbindConfirm(event, linkId);
