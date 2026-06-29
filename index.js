@@ -325,6 +325,7 @@ async function handlePostback(event) {
   } else if (data === 'action=query_bindings') {
     replyMessage = await handleQueryBindings(event);
   } else if (action === 'view_medical_info' && linkId) {
+    console.log('[handlePostback] view_medical_info, linkId:', linkId);
     replyMessage = await handleViewMedicalInfo(event, linkId);
   } else if (action === 'unbind_confirm' && linkId) {
     replyMessage = await handleUnbindConfirm(event, linkId);
@@ -336,10 +337,20 @@ async function handlePostback(event) {
     replyMessage = { type: 'text', text: '此功能正在施工中，敬請期待！' };
   }
 
-  await messagingApiClient.replyMessage({
-    replyToken: event.replyToken,
-    messages: Array.isArray(replyMessage) ? replyMessage : [replyMessage]
-  });
+  if (replyMessage) {
+    try {
+      console.log('[handlePostback] replying with:', JSON.stringify(replyMessage).slice(0, 200));
+      await messagingApiClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: Array.isArray(replyMessage) ? replyMessage : [replyMessage]
+      });
+    } catch (err) {
+      console.error('[handlePostback] replyMessage error:', err.message);
+      console.error('[handlePostback] error details:', JSON.stringify(err.response?.data || {}));
+    }
+  } else {
+    console.error('[handlePostback] no replyMessage for data:', data);
+  }
 }
 
 // ========== Rich Menu 回覆函式 ==========
