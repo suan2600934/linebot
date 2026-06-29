@@ -1,0 +1,46 @@
+name: Cleanup Jobs
+
+on:
+  schedule:
+    # Job A: 每 5 分鐘標記過期驗證碼
+    - cron: '*/5 * * * *'
+    # Job B: 每天 UTC 02:00(台灣時間 10:00)搬移舊記錄到 archive
+    - cron: '0 2 * * *'
+  workflow_dispatch:  # 允許手動觸發,方便測試
+
+jobs:
+  mark-expired:
+    # 只在每 5 分鐘的排程觸發時跑
+    if: github.event.schedule == '*/5 * * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call mark-expired API
+        run: |
+          response=$(curl -s -o /tmp/response.json -w "%{http_code}" \
+            -X POST "${{ secrets.API_BASE_URL }}/api/cleanup/mark-expired" \
+            -H "x-cleanup-api-key: ${{ secrets.CLEANUP_API_KEY }}" \
+            -H "Content-Type: application/json")
+          echo "HTTP Status: $response"
+          cat /tmp/response.json
+          if [ "$response" -ge 400 ]; then
+            echo "::error::mark-expired API failed with status $response"
+            exit 1
+          fi
+
+  archive-old:
+    # 只在每天的排程觸發時跑
+    if: github.event.schedule == '0 2 * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call archive-old API
+        run: |
+          response=$(curl -s -o /tmp/response.json -w "%{http_code}" \
+            -X POST "${{ secrets.API_BASE_URL }}/api/cleanup/archive-old" \
+            -H "x-cleanup-api-key: ${{ secrets.CLEANUP_API_KEY }}" \
+            -H "Content-Type: application/json")
+          echo "HTTP Status: $response"
+          cat /tmp/response.json
+          if [ "$response" -ge 400 ]; then
+            echo "::error::archive-old API failed with status $response"
+            exit 1
+          fi
