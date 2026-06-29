@@ -220,8 +220,50 @@ node generate-weekly-schedules.js → schedule-week1~5.png
 
 ---
 
-**最後更新**：2026-06-27
-**狀態**：LINE 帳號綁定系統 MVP 完成，等待 Zeabur 部署驗證
+## 🔙 災難復原參考
+
+### Git 復原點（出事時可執行）
+
+| 目的 | Commit | 指令 |
+|------|--------|------|
+| 回復到「無 line-binding 功能」的乾淨狀態 | `2850ab9` | `git reset --hard 2850ab9` |
+| 回復到 line-binding 實驗開始前 | `2850ab9` | 同上 |
+| 回復到「取消綁定功能實作前」 | `1bb6baa` | `git reset --hard 1bb6baa` |
+| 目前完整備份 | `1bb6baa` | `backup-before-new-changes` 分支 |
+
+### 備份分支
+```bash
+# 備份分支（指向目前最新狀態）
+backup-before-new-changes = 1bb6baa
+
+# 如需更新備份分支到其他時間點：
+git branch -f backup-before-new-changes <commit-hash>
+```
+
+### 完整移除 line-binding 流程
+```bash
+# 1. 確認要回复的 commit（通常是 2850ab9）
+git reset --hard 2850ab9
+
+# 2. 強制推送到 remote（會覆蓋 GitHub 上的歷史）
+git push --force origin master
+
+# 3. 刪除 line-binding 分支（如需要）
+git branch -d line-binding
+git push origin --delete line-binding
+```
+
+### 重要的 Commit 記錄
+| Commit | 說明 |
+|--------|------|
+| `2850ab9` | line-binding 實驗開始前的乾淨狀態（無綁定功能） |
+| `73eda7e` | line-binding 和 master 最後共用的 commit |
+| `1bb6baa` | 目前 master 最新（取消綁定功能實作完成） |
+
+---
+
+**最後更新**：2026-06-29
+**狀態**：LINE 取消綁定功能實作完成，準備部署測試
 
 ---
 
