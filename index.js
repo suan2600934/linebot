@@ -341,7 +341,8 @@ async function handlePostback(event) {
     console.log('[handlePostback] replyToken:', event.replyToken.slice(0, 20) + '...');
     console.log('[handlePostback] data:', data);
     console.log('[handlePostback] action:', action, 'linkId:', linkId);
-    console.log('[handlePostback] full replyMessage:', JSON.stringify(replyMessage, null, 2).slice(0, 1000));
+    console.log('[handlePostback] replyMessage type:', replyMessage.type);
+    console.log('[handlePostback] full replyMessage:', JSON.stringify(replyMessage));
     try {
       await messagingApiClient.replyMessage({
         replyToken: event.replyToken,
@@ -350,8 +351,8 @@ async function handlePostback(event) {
     } catch (err) {
       console.error('[handlePostback] replyMessage error:', err.message);
       console.error('[handlePostback] error code:', err.code);
-      console.error('[handlePostback] status:', err.response?.status);
-      console.error('[handlePostback] error details:', JSON.stringify(err.response?.data || err.data || {}));
+      console.error('[handlePostback] full error object:', JSON.stringify(err, Object.getOwnPropertyNames(err)));
+      console.error('[handlePostback] error response:', err.response);
     }
   } else {
     console.error('[handlePostback] no replyMessage for data:', data);
@@ -1020,33 +1021,29 @@ async function handleViewMedicalInfo(event, linkId) {
       footer: {
         type: 'box',
         layout: 'vertical',
+        spacing: 'sm',
         contents: [
           {
             type: 'button',
             action: { type: 'postback', label: '❌ 取消綁定', data: `action=unbind_confirm&link_id=${linkId}` },
             style: 'secondary',
-            color: '#FF6B6B',
-            margin: 'sm'
+            color: '#FF6B6B'
           },
           {
             type: 'button',
-            action: { type: 'postback', label: '📋 欠單查詢（施工中）', data: 'action=coming_soon', style: 'secondary' },
-            margin: 'sm'
+            action: { type: 'postback', label: '📋 欠單查詢（施工中）', data: 'action=coming_soon', style: 'secondary' }
           },
           {
             type: 'button',
-            action: { type: 'postback', label: '💉 抽血報告（施工中）', data: 'action=coming_soon', style: 'secondary' },
-            margin: 'sm'
+            action: { type: 'postback', label: '💉 抽血報告（施工中）', data: 'action=coming_soon', style: 'secondary' }
           },
           {
             type: 'button',
-            action: { type: 'postback', label: '🩺 慢性病資訊（施工中）', data: 'action=coming_soon', style: 'secondary' },
-            margin: 'sm'
+            action: { type: 'postback', label: '🩺 慢性病資訊（施工中）', data: 'action=coming_soon', style: 'secondary' }
           },
           {
             type: 'button',
-            action: { type: 'postback', label: '💊 領藥時間（施工中）', data: 'action=coming_soon', style: 'secondary' },
-            margin: 'sm'
+            action: { type: 'postback', label: '💊 領藥時間（施工中）', data: 'action=coming_soon', style: 'secondary' }
           }
         ]
       }
