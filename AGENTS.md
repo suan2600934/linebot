@@ -299,7 +299,27 @@ Flex Carousel（顯示所有綁定，藍色「選擇」按鈕）
 - [ ] 抽血報告（action=coming_soon）
 - [ ] 慢性病資訊（action=coming_soon）
 - [ ] 領藥時間（action=coming_soon）
-- [ ] patdb_query.py（櫃台端查詢/取消綁定）
+- [x] patdb_query.py（櫃台端查詢/取消綁定）- **待實作本地綁定記錄功能**
+
+#### patdb_query.py 實作需求（v1.10）
+**目的**：在綁定當下記錄病患姓名 + recno + 綁定時間，解除時可輸入時間查詢
+
+**資料欄位**：
+| 欄位 | 說明 |
+|------|------|
+| `id` | 自增 ID |
+| `patient_name` | 病患姓名 |
+| `recno` | 病歷號 |
+| `binding_time` | 綁定時間 |
+| `line_user_id_hash` | LINE userId 的 HMAC hash |
+| `link_id` | 對應 Supabase 的 link_id |
+| `status` | active / unbound |
+
+**流程**：
+1. **綁定時**：選擇病人 → 記錄病患姓名 + recno + 當下時間 → 存入本地資料庫 → 產生驗證碼
+2. **解除時**：輸入綁定時間 → 查出符合的記錄 → 選擇要解除的 → 呼叫 `/api/unbind`
+
+**程式路徑**：`H:\opencode\linebot\lineid_code\patdb_query.py`（本地執行，不上雲端）
 
 #### 重要 Commit 記錄（更新）
 | Commit | 說明 |

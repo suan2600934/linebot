@@ -468,3 +468,40 @@ Flex Carousel（顯示所有綁定，藍色「選擇」按鈕）
 | patdb_query.py | `lineid_code/patdb_query.py` | 櫃台端查詢/取消綁定工具（需解密 + 對照本地 patdb.dbf） |
 
 **備註**：這些功能需要先確認資料來源（Supabase 資料表或本地資料庫），再實作對應的 API 和 Flex Message 介面。
+
+---
+
+### 2026-06-30 待實作（v1.10）：patdb_query.py 本地綁定記錄功能
+
+#### 需求背景
+一個 LINE 帳號可能綁定多個病歷號（家人代辦），僅靠「綁定時間」無法確認要解除的是哪一筆。
+需要在**綁定當下**就記錄病患姓名 + 病歷號 + 綁定時間，存到本地資料庫。
+
+#### 程式路徑
+| 程式 | 路徑 | 部署到 |
+|------|------|--------|
+| 主程式 LINE Bot | `H:\opencode\linebot\index.js` | `linebot-mile.zeabur.app` |
+| LINE 綁定 API | `H:\opencode\linebot\lineid_code\index.js` | `lineid-code.zeabur.app` |
+| 櫃台工具 | `H:\opencode\linebot\lineid_code\patdb_query.py` | 本地執行 |
+
+#### 實作方向
+在 `patdb_query.py` 新增「綁定管理」Tab，使用本地 SQLite 或 JSON 檔案儲存綁定記錄。
+
+**資料欄位**：
+| 欄位 | 說明 |
+|------|------|
+| `id` | 自增 ID |
+| `patient_name` | 病患姓名 |
+| `recno` | 病歷號 |
+| `binding_time` | 綁定時間 |
+| `line_user_id_hash` | LINE userId 的 HMAC hash |
+| `link_id` | 對應 Supabase 的 link_id |
+| `status` | active / unbound |
+
+**流程**：
+1. **綁定時**：選擇病人 → 記錄病患姓名 + recno + 當下時間 → 存入本地資料庫 → 產生驗證碼
+2. **解除時**：輸入綁定時間 → 查出符合的記錄 → 選擇要解除的 → 呼叫 `/api/unbind`
+
+**注意事項**：
+- 資料庫存在本地端，不上雲端（維持去識別化）
+- link_id 在 /api/verify 完成後才能知道，紀錄時可先留空，之後更新
