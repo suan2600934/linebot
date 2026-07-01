@@ -507,11 +507,14 @@ async function getThisWeekSchedule() {
 
 // 完整月份班表
 async function getFullMonthSchedule() {
+  const now = new Date();
+  const rocYear = now.getFullYear() - 1911;
+  const month = now.getMonth() + 1;
   const imageUrl = STORAGE_URL + '/schedule-full-month.jpg';
   return [
     {
       type: 'text',
-      text: '【115年6月門診班表】\n\n如圖所示'
+      text: `【${rocYear}年${month}月門診班表】\n\n如圖所示`
     },
     {
       type: 'image',
