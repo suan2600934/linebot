@@ -485,23 +485,54 @@ Flex Carousel（顯示所有綁定，藍色「選擇」按鈕）
 | 櫃台工具 | `H:\opencode\linebot\lineid_code\patdb_query.py` | 本地執行 |
 
 #### 實作方向
+
 在 `patdb_query.py` 新增「綁定管理」Tab，使用本地 SQLite 或 JSON 檔案儲存綁定記錄。
 
-**資料欄位**：
+**本地資料欄位（綁定時記錄）**：
 | 欄位 | 說明 |
 |------|------|
 | `id` | 自增 ID |
 | `patient_name` | 病患姓名 |
 | `recno` | 病歷號 |
+| `recno_hash` | HMAC-SHA256(recno, APP_KEY) |
 | `binding_time` | 綁定時間 |
-| `line_user_id_hash` | LINE userId 的 HMAC hash |
-| `link_id` | 對應 Supabase 的 link_id |
 | `status` | active / unbound |
 
-**流程**：
-1. **綁定時**：選擇病人 → 記錄病患姓名 + recno + 當下時間 → 存入本地資料庫 → 產生驗證碼
-2. **解除時**：輸入綁定時間 → 查出符合的記錄 → 選擇要解除的 → 呼叫 `/api/unbind`
+#### 解除時完整流程
 
-**注意事項**：
-- 資料庫存在本地端，不上雲端（維持去識別化）
-- link_id 在 /api/verify 完成後才能知道，紀錄時可先留空，之後更新
+```
+輸入綁定時間 → 查到本地記錄
+    ↓
+用 recno_hash 查 line_user_links（需新建 internal API）
+    ↓
+取得 linkId
+    ↓
+呼叫 /api/unbind { linkId }
+    ↓
+完成
+```
+
+**優點**：
+- 不需要等 /api/verify 完成後才知道 linkId
+- 解除時動態查詢
+- /api/unbind 邏輯完全不需要改
+
+#### 需要新增的功能
+
+**1. 查詢 linkId by recno_hash（新增 API）**
+- `GET /api/admin/links-by-recno-hash` - 傳入 recno_hash，回傳 linkId
+- 需要 UNBIND_API_KEY 驗證
+- 查 line_user_links WHERE recno_hash = $1 AND status = 'active'
+
+**2. patdb_query.py 新增功能**
+- 新增「綁定管理」Tab
+- 綁定時：選擇病人 → 記錄 patient_name + recno + recno_hash + binding_time → 存入本地資料庫 → 產生驗證碼
+- 解除時：輸入綁定時間 → 查到本地記錄 → 呼叫 GET /api/admin/links-by-recno-hash → 取得 linkId → 呼叫 /api/unbind { linkId }
+
+**API Key 設計**：
+- `/api/admin/links-by-recno-hash` - 新增，需 UNBIND_API_KEY 驗證
+- `/api/admin/unbind` - 新增，需 UNBIND_API_KEY 驗證
+- `/api/unbind` - 維持無 key（給 LINE Webhook 用）
+
+#### 櫃台引導
+查到記錄後，畫面顯示「請病人在 LINE 的『查詢就醫資訊』中操作解除」。
