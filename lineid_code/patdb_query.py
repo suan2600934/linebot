@@ -128,14 +128,11 @@ def save_binding_record(patient_name, recno, recno_hash, binding_time):
         logging.info(f"本地綁定記錄寫入成功：{patient_name} ({recno})")
         return True
     except sqlite3.IntegrityError:
-        existing = conn.execute("SELECT id, status FROM binding_records WHERE recno_hash = ?", (recno_hash,)).fetchone()
-        if existing and existing[1] == 'active':
-            logging.warning(f"已有有效綁定記錄：{patient_name} ({recno})")
-            return False
+        conn.execute("DELETE FROM binding_records WHERE recno_hash = ?", (recno_hash,))
         conn.execute("""
-            UPDATE binding_records SET status = 'active', patient_name = ?, binding_time = ?
-            WHERE recno_hash = ?
-        """, (patient_name, binding_time, recno_hash))
+            INSERT INTO binding_records (patient_name, recno, recno_hash, binding_time, status)
+            VALUES (?, ?, ?, ?, 'active')
+        """, (patient_name, recno, recno_hash, binding_time))
         conn.commit()
         logging.info(f"重新啟用綁定記錄：{patient_name} ({recno})")
         return True
