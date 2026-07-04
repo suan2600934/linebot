@@ -260,9 +260,28 @@ async function handleTextMessage(event) {
   }
   
   let replyMessage;
-  
+
+  // 驗證碼處理（6位數字）→ 呼叫 lineid_code 驗證
+  if (/^\d{6}$/.test(text)) {
+    try {
+      const verifyRes = await fetch(`${process.env.LINEID_CODE_URL}/api/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: text, lineUserId: userId })
+      });
+      const result = await verifyRes.json();
+      if (result.ok) {
+        replyMessage = { type: 'text', text: '✅ 綁定成功！您的手機已與診所系統連結，未來可透過 LINE 查詢看診進度。' };
+      } else {
+        replyMessage = { type: 'text', text: `❌ 綁定失敗：${result.error}` };
+      }
+    } catch (err) {
+      console.error('[verify] error:', err);
+      replyMessage = { type: 'text', text: '❌ 系統錯誤，請稍後再試或聯繫診所。' };
+    }
+  }
   // 門診表查詢（數字選擇）
-  if (text === '1') {
+  else if (text === '1') {
     replyMessage = await getThisWeekSchedule();
   } else if (text === '2') {
     replyMessage = await getFullMonthSchedule();
