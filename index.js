@@ -271,7 +271,7 @@ async function handleTextMessage(event) {
       });
       const result = await verifyRes.json();
       if (result.ok) {
-        replyMessage = { type: 'text', text: '✅ 綁定成功！您的手機已與診所系統連結，未來可透過 LINE 查詢看診進度。' };
+        replyMessage = { type: 'text', text: '✅ 綁定成功！您的手機已與診所系統連結，未來可透過 LINE 的「查詢就醫資訊」使用更多服務。' };
       } else {
         replyMessage = { type: 'text', text: `❌ 綁定失敗：${result.error}` };
       }
