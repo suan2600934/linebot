@@ -357,7 +357,7 @@ app.get('/api/query-bindings', async (req, res) => {
       let recno = '********';
       try {
         recno = decrypt(row.encrypted_recno, row.key_version);
-        recno = recno.slice(0, 4) + '****' + recno.slice(-2);
+        recno = recno.slice(0, 1) + '*****' + recno.slice(-1);
       } catch (e) {
         console.error('[query-bindings] decrypt error:', e.message);
       }
@@ -607,7 +607,77 @@ async function handleUnbindCancel(replyToken) {
   });
 }
 
+// ─── 內部 API：查詢 linkId by recno_hash（供櫃台系統呼叫）───
+app.get('/api/admin/links-by-recno-hash', async (req, res) => {
+  const providedKey = req.get('x-unbind-api-key');
+  if (!process.env.UNBIND_API_KEY || providedKey !== process.env.UNBIND_API_KEY) {
+    return res.status(401).json({ ok: false, error: '未授權' });
+  }
+  const { recno_hash } = req.query || {};
+  if (!recno_hash) {
+    return badRequest(res, '缺少 recno_hash');
+  }
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(
+      `SELECT id as link_id, status, linked_at FROM line_user_links
+        WHERE recno_hash = $1 AND status = 'active' LIMIT 1`,
+      [recno_hash]
+    );
+    if (rows.length === 0) {
+      return res.json({ ok: true, data: null });
+    }
+    return res.json({ ok: true, data: { linkId: rows[0].link_id, status: rows[0].status, linked_at: rows[0].linked_at } });
+  } catch (err) {
+    console.error('[links-by-recno-hash] error:', err);
+    return res.status(500).json({ ok: false, error: '系統錯誤,請稍後再試' });
+  } finally {
+    client.release();
+  }
+});
+
 // ─── 內部 API：取消綁定（供櫃台系統呼叫）───
+app.post('/api/admin/unbind', express.json(), async (req, res) => {
+  const providedKey = req.get('x-unbind-api-key');
+  if (!process.env.UNBIND_API_KEY || providedKey !== process.env.UNBIND_API_KEY) {
+    return res.status(401).json({ ok: false, error: '未授權' });
+  }
+  const { linkId } = req.body || {};
+  if (!linkId) {
+    return badRequest(res, '缺少 linkId');
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      `SELECT id, user_id_hash, recno_hash, status FROM line_user_links WHERE id = $1 FOR UPDATE`,
+      [linkId]
+    );
+    if (rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ ok: false, error: '找不到此綁定記錄' });
+    }
+    if (rows[0].status !== 'active') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ ok: false, error: `此綁定已於先前解除` });
+    }
+    await client.query(`UPDATE line_user_links SET status = 'unbound' WHERE id = $1`, [linkId]);
+    await client.query(
+      `INSERT INTO line_user_links_history (link_id, user_id_hash, recno_hash, action) VALUES ($1, $2, $3, 'unbind')`,
+      [linkId, rows[0].user_id_hash, rows[0].recno_hash]
+    );
+    await client.query('COMMIT');
+    return res.json({ ok: true, data: { linkId, status: 'unbound' } });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('[admin/unbind] error:', err);
+    return res.status(500).json({ ok: false, error: '系統錯誤,請稍後再試' });
+  } finally {
+    client.release();
+  }
+});
+
+// ─── 舊的 /api/unbind（維持無 key，給 LINE Webhook 用）───
 app.post('/api/unbind', express.json(), async (req, res) => {
   const { linkId } = req.body || {};
 
