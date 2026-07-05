@@ -1065,23 +1065,19 @@ async function handleViewMedicalInfo(event, linkId) {
 
 // 取消綁定 - 確認（串接 lineid_code）
 async function handleUnbindConfirm(event, linkId) {
-  console.log('[handleUnbindConfirm] start, linkId:', linkId);
   const baseUrl = process.env.LINEID_CODE_URL || 'https://lineid-code.zeabur.app';
   const lineUserId = event.source.userId;
   
   try {
-    console.log('[handleUnbindConfirm] calling query-bindings API');
     const apiRes = await fetch(`${baseUrl}/api/query-bindings?lineUserId=${encodeURIComponent(lineUserId)}`, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' }
     });
     const result = await apiRes.json();
-    console.log('[handleUnbindConfirm] query-bindings result:', JSON.stringify(result));
     
     const binding = result.data?.find(b => b.link_id == linkId);
-    console.log('[handleUnbindConfirm] binding:', binding);
     
-    const flex = {
+    return {
       type: 'flex',
       altText: '確認取消綁定',
       contents: {
@@ -1111,8 +1107,6 @@ async function handleUnbindConfirm(event, linkId) {
         }
       }
     };
-    console.log('[handleUnbindConfirm] returning flex');
-    return flex;
   } catch (err) {
     console.error('[handleUnbindConfirm] error:', err);
     return { type: 'text', text: '❌ 系統錯誤，請稍後再試。' };
