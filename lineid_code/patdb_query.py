@@ -100,15 +100,24 @@ def init_binding_db():
     conn.execute("""
         CREATE TABLE IF NOT EXISTS binding_records (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            binder_name TEXT NOT NULL,
+            binder_idno TEXT,
+            binder_birth TEXT,
             patient_name TEXT NOT NULL,
+            patient_idno TEXT,
+            patient_birth TEXT,
             recno TEXT NOT NULL,
             recno_hash TEXT NOT NULL,
             binding_time TEXT NOT NULL,
             status TEXT DEFAULT 'active',
-            created_at TEXT DEFAULT (datetime('now', '+8 hours')),
-            UNIQUE(recno_hash, status)
+            created_at TEXT DEFAULT (datetime('now', '+8 hours'))
         )
     """)
+    try:
+        conn.execute("SELECT binder_birth FROM binding_records LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.execute("ALTER TABLE binding_records ADD COLUMN binder_birth TEXT")
+        conn.execute("ALTER TABLE binding_records ADD COLUMN patient_birth TEXT")
     conn.commit()
     conn.close()
     logging.info(f"本地綁定資料庫初始化完成：{BINDING_DB_PATH}")
@@ -117,34 +126,83 @@ def compute_recno_hash(recno, app_key_b64):
     key = base64.b64decode(app_key_b64)
     return hmac.new(key, recno.encode('utf-8'), hashlib.sha256).hexdigest()
 
-def save_binding_record(patient_name, recno, recno_hash, binding_time):
+def save_binding_record(binder_name, binder_idno, binder_birth, patient_name, patient_idno, patient_birth, recno, recno_hash, binding_time):
     conn = sqlite3.connect(BINDING_DB_PATH)
     try:
         conn.execute("""
-            INSERT INTO binding_records (patient_name, recno, recno_hash, binding_time, status)
-            VALUES (?, ?, ?, ?, 'active')
-        """, (patient_name, recno, recno_hash, binding_time))
+            INSERT INTO binding_records (binder_name, binder_idno, binder_birth, patient_name, patient_idno, patient_birth, recno, recno_hash, binding_time, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
+        """, (binder_name, binder_idno, binder_birth, patient_name, patient_idno, patient_birth, recno, recno_hash, binding_time))
         conn.commit()
-        logging.info(f"本地綁定記錄寫入成功：{patient_name} ({recno})")
+        logging.info(f"本地綁定記錄寫入成功：{binder_name} 綁定 {patient_name} ({recno})")
         return True
     except sqlite3.IntegrityError:
         conn.execute("DELETE FROM binding_records WHERE recno_hash = ?", (recno_hash,))
         conn.execute("""
-            INSERT INTO binding_records (patient_name, recno, recno_hash, binding_time, status)
-            VALUES (?, ?, ?, ?, 'active')
-        """, (patient_name, recno, recno_hash, binding_time))
+            INSERT INTO binding_records (binder_name, binder_idno, binder_birth, patient_name, patient_idno, patient_birth, recno, recno_hash, binding_time, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
+        """, (binder_name, binder_idno, binder_birth, patient_name, patient_idno, patient_birth, recno, recno_hash, binding_time))
         conn.commit()
-        logging.info(f"重新啟用綁定記錄：{patient_name} ({recno})")
+        logging.info(f"重新啟用綁定記錄：{binder_name} 綁定 {patient_name} ({recno})")
         return True
     finally:
         conn.close()
 
+def check_existing_binding(binder_name, recno_hash):
+    conn = sqlite3.connect(BINDING_DB_PATH)
+    rows = conn.execute("""
+        SELECT id, binder_name, patient_name, recno, binding_time, status
+        FROM binding_records
+        WHERE binder_name = ? AND recno_hash = ? AND status = 'active'
+    """, (binder_name, recno_hash)).fetchall()
+    conn.close()
+    return rows
+
 def get_active_binding_records():
     conn = sqlite3.connect(BINDING_DB_PATH)
     rows = conn.execute("""
-        SELECT id, patient_name, recno, recno_hash, binding_time, status
+        SELECT id, binder_name, binder_idno, binder_birth, patient_name, patient_idno, patient_birth, recno, recno_hash, binding_time, status
         FROM binding_records WHERE status = 'active' ORDER BY binding_time DESC
     """).fetchall()
+    conn.close()
+    return rows
+
+def check_existing_binding(binder_name, recno_hash):
+    conn = sqlite3.connect(BINDING_DB_PATH)
+    rows = conn.execute("""
+        SELECT id, binder_name, binder_idno, binder_birth, patient_name, patient_idno, patient_birth, recno, binding_time, status
+        FROM binding_records
+        WHERE binder_name = ? AND recno_hash = ? AND status = 'active'
+    """, (binder_name, recno_hash)).fetchall()
+    conn.close()
+    return rows
+
+def format_birth(birth):
+    if not birth or len(birth) != 6:
+        return birth or ''
+    return f"{birth[:2]}/{birth[2:4]}/{birth[4:6]}"
+
+def search_binding_records(keyword, search_type='all'):
+    conn = sqlite3.connect(BINDING_DB_PATH)
+    if search_type == 'binder':
+        rows = conn.execute("""
+            SELECT id, binder_name, binder_idno, binder_birth, patient_name, patient_idno, patient_birth, recno, recno_hash, binding_time, status
+            FROM binding_records
+            WHERE (binder_name LIKE ? OR binder_idno LIKE ? OR binder_birth LIKE ?) AND status = 'active' ORDER BY binding_time DESC
+        """, (f'%{keyword}%', f'%{keyword}%', f'%{keyword}%')).fetchall()
+    elif search_type == 'patient':
+        rows = conn.execute("""
+            SELECT id, binder_name, binder_idno, binder_birth, patient_name, patient_idno, patient_birth, recno, recno_hash, binding_time, status
+            FROM binding_records
+            WHERE (patient_name LIKE ? OR patient_idno LIKE ? OR patient_birth LIKE ? OR recno LIKE ?) AND status = 'active' ORDER BY binding_time DESC
+        """, (f'%{keyword}%', f'%{keyword}%', f'%{keyword}%', f'%{keyword}%')).fetchall()
+    else:
+        rows = conn.execute("""
+            SELECT id, binder_name, binder_idno, binder_birth, patient_name, patient_idno, patient_birth, recno, recno_hash, binding_time, status
+            FROM binding_records
+            WHERE (binder_name LIKE ? OR binder_idno LIKE ? OR binder_birth LIKE ?
+               OR patient_name LIKE ? OR patient_idno LIKE ? OR patient_birth LIKE ? OR recno LIKE ?) AND status = 'active' ORDER BY binding_time DESC
+        """, (f'%{keyword}%', f'%{keyword}%', f'%{keyword}%', f'%{keyword}%', f'%{keyword}%', f'%{keyword}%', f'%{keyword}%')).fetchall()
     conn.close()
     return rows
 
@@ -221,10 +279,15 @@ class App:
         self.selected_recno = None
         self.selected_name = None
         self.selected_idno = None
+        self.selected_birth = None
+        self.selected_binder_recno = None
+        self.selected_binder_name = None
+        self.selected_binder_idno = None
+        self.selected_binder_birth = None
 
         self.root = tk.Tk()
         self.root.title("賜安診所 - 驗證碼產生器")
-        self.root.geometry("800x650")
+        self.root.geometry("900x750")
         self.build_ui()
 
         self.load_data()
@@ -262,41 +325,88 @@ class App:
         parent.rowconfigure(0, weight=1)
 
         title = ttk.Label(f, text="賜安診所 LINE 綁定驗證碼系統", font=("Microsoft JhengHei", 14, "bold"))
-        title.grid(row=0, column=0, columnspan=2, pady=(0, 10))
+        title.grid(row=0, column=0, columnspan=3, pady=(0, 5))
 
-        ttk.Label(f, text="搜尋（姓名 / 身分證 / 生日）：").grid(row=1, column=0, sticky="w", pady=5)
+        note = ttk.Label(f, text="請先選「綁定人」（A），再選「被綁定人」（B）", foreground="red", font=("Microsoft JhengHei", 10))
+        note.grid(row=1, column=0, columnspan=3, pady=(0, 10))
+
+        binder_frame = ttk.LabelFrame(f, text="【A】綁定人（操作 LINE 的人）", padding=10)
+        binder_frame.grid(row=2, column=0, columnspan=3, pady=5, sticky="ew")
+        binder_frame.columnconfigure(1, weight=1)
+
+        ttk.Label(binder_frame, text="搜尋（姓名/身份證/生日）：").grid(row=0, column=0, sticky="w", pady=3)
+        ttk.Label(binder_frame, text="💡 姓名/身份證/生日/RECNO 任一字元符合即可。生日請輸入6位數，如：490101，顯示會自動轉為 49/01/01", font=("Microsoft JhengHei", 9), foreground="blue").grid(row=1, column=0, columnspan=4, sticky="w", padx=5)
+        self.binder_search_var = tk.StringVar()
+        binder_entry = ttk.Entry(binder_frame, textvariable=self.binder_search_var, width=30, font=("Microsoft JhengHei", 11))
+        binder_entry.grid(row=0, column=1, sticky="ew", pady=3, padx=5)
+        binder_entry.bind("<Return>", lambda e: self.do_binder_search())
+        binder_entry.focus()
+
+        ttk.Button(binder_frame, text="查詢", command=self.do_binder_search).grid(row=0, column=2, pady=3, padx=2)
+        ttk.Button(binder_frame, text="清除", command=self.clear_binder_search).grid(row=0, column=3, pady=3, padx=2)
+
+        binder_list_frame = ttk.Frame(binder_frame)
+        binder_list_frame.grid(row=2, column=0, columnspan=4, pady=5, sticky="nsew")
+        binder_scrollbar = ttk.Scrollbar(binder_list_frame)
+        self.binder_listbox = tk.Listbox(binder_list_frame, width=80, height=4, font=("Microsoft JhengHei", 10), yscrollcommand=binder_scrollbar.set)
+        self.binder_listbox.grid(row=0, column=0, sticky="nsew")
+        binder_scrollbar.config(command=self.binder_listbox.yview)
+        binder_scrollbar.grid(row=0, column=1, sticky="ns")
+        binder_list_frame.rowconfigure(0, weight=1)
+        binder_list_frame.columnconfigure(0, weight=1)
+
+        self.binder_listbox.bind("<Double-Button-1>", lambda e: self.on_binder_select())
+
+        ttk.Button(binder_frame, text="選擇此人為綁定人", command=self.on_binder_select).grid(row=3, column=0, columnspan=4, pady=3)
+
+        self.binder_info_label = ttk.Label(binder_frame, text="（尚未選擇）", foreground="blue", font=("Microsoft JhengHei", 10))
+        self.binder_info_label.grid(row=4, column=0, columnspan=4)
+
+        separator = ttk.Separator(f, orient="horizontal")
+        separator.grid(row=3, column=0, columnspan=3, pady=10, sticky="ew")
+
+        patient_frame = ttk.LabelFrame(f, text="【B】被綁定人（要看診的病人）", padding=10)
+        patient_frame.grid(row=4, column=0, columnspan=3, pady=5, sticky="ew")
+        patient_frame.columnconfigure(1, weight=1)
+
+        ttk.Label(patient_frame, text="搜尋（姓名/身份證/生日）：").grid(row=0, column=0, sticky="w", pady=3)
+        ttk.Label(patient_frame, text="💡 姓名/身份證/生日/RECNO 任一字元符合即可。生日請輸入6位數，如：490101，顯示會自動轉為 49/01/01", font=("Microsoft JhengHei", 9), foreground="blue").grid(row=1, column=0, columnspan=4, sticky="w", padx=5)
         self.search_var = tk.StringVar()
-        search_entry = ttk.Entry(f, textvariable=self.search_var, width=40, font=("Microsoft JhengHei", 12))
-        search_entry.grid(row=1, column=1, pady=5)
-        search_entry.bind("<Return>", lambda e: self.do_search())
-        search_entry.focus()
+        patient_entry = ttk.Entry(patient_frame, textvariable=self.search_var, width=30, font=("Microsoft JhengHei", 11))
+        patient_entry.grid(row=0, column=1, sticky="ew", pady=3, padx=5)
+        patient_entry.bind("<Return>", lambda e: self.do_search())
+        patient_entry.focus()
 
-        btn_frame = ttk.Frame(f)
-        btn_frame.grid(row=2, column=0, columnspan=2, pady=5)
-        ttk.Button(btn_frame, text="查詢", command=self.do_search).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="清除", command=self.clear_search).pack(side="left", padx=5)
+        ttk.Button(patient_frame, text="查詢", command=self.do_search).grid(row=0, column=2, pady=3, padx=2)
+        ttk.Button(patient_frame, text="清除", command=self.clear_search).grid(row=0, column=3, pady=3, padx=2)
 
-        list_frame = ttk.Frame(f)
-        list_frame.grid(row=3, column=0, columnspan=2, pady=5, sticky="nsew")
-        scrollbar = ttk.Scrollbar(list_frame)
-        self.result_listbox = tk.Listbox(list_frame, width=70, height=10, font=("Microsoft JhengHei", 11), yscrollcommand=scrollbar.set)
+        patient_list_frame = ttk.Frame(patient_frame)
+        patient_list_frame.grid(row=2, column=0, columnspan=4, pady=5, sticky="nsew")
+        patient_scrollbar = ttk.Scrollbar(patient_list_frame)
+        self.result_listbox = tk.Listbox(patient_list_frame, width=80, height=4, font=("Microsoft JhengHei", 10), yscrollcommand=patient_scrollbar.set)
         self.result_listbox.grid(row=0, column=0, sticky="nsew")
-        scrollbar.config(command=self.result_listbox.yview)
-        scrollbar.grid(row=0, column=1, sticky="ns")
-        list_frame.rowconfigure(0, weight=1)
-        list_frame.columnconfigure(0, weight=1)
+        patient_scrollbar.config(command=self.result_listbox.yview)
+        patient_scrollbar.grid(row=0, column=1, sticky="ns")
+        patient_list_frame.rowconfigure(0, weight=1)
+        patient_list_frame.columnconfigure(0, weight=1)
 
         self.result_listbox.bind("<Double-Button-1>", lambda e: self.on_select())
 
-        confirm_frame = ttk.Frame(f)
-        confirm_frame.grid(row=4, column=0, columnspan=2, pady=5)
-        ttk.Button(confirm_frame, text="選擇此病人並產生驗證碼", command=self.on_select).pack()
+        ttk.Button(patient_frame, text="選擇此人為被綁定人", command=self.on_select).grid(row=3, column=0, columnspan=4, pady=3)
 
-        self.info_label = ttk.Label(f, text="", foreground="blue", font=("Microsoft JhengHei", 11))
-        self.info_label.grid(row=5, column=0, columnspan=2, pady=5)
+        self.info_label = ttk.Label(patient_frame, text="（尚未選擇）", foreground="blue", font=("Microsoft JhengHei", 10))
+        self.info_label.grid(row=4, column=0, columnspan=4)
+
+        confirm_frame = ttk.Frame(f)
+        confirm_frame.grid(row=5, column=0, columnspan=3, pady=10)
+        self.confirm_btn = ttk.Button(confirm_frame, text="確認並產生驗證碼", command=self.on_confirm_and_generate, state="disabled")
+        self.confirm_btn.pack()
+
+        self.confirm_label = ttk.Label(f, text="", foreground="green", font=("Microsoft JhengHei", 11), justify="center")
+        self.confirm_label.grid(row=6, column=0, columnspan=3)
 
         code_frame = ttk.LabelFrame(f, text="驗證碼", padding=10)
-        code_frame.grid(row=6, column=0, columnspan=2, pady=10, sticky="nsew")
+        code_frame.grid(row=7, column=0, columnspan=3, pady=10, sticky="nsew")
         self.code_label = ttk.Label(code_frame, text="（尚未產生）", font=("Microsoft JhengHei", 28, "bold"), foreground="red")
         self.code_label.pack()
         self.expiry_label = ttk.Label(code_frame, text="", font=("Microsoft JhengHei", 10))
@@ -304,7 +414,7 @@ class App:
         ttk.Button(code_frame, text="複製驗證碼", command=self.copy_code).pack(pady=5)
 
         self.status_label = ttk.Label(f, text="", foreground="gray")
-        self.status_label.grid(row=7, column=0, columnspan=2)
+        self.status_label.grid(row=8, column=0, columnspan=3)
 
         f.columnconfigure(1, weight=1)
 
@@ -316,6 +426,43 @@ class App:
 
         title = ttk.Label(f, text="本地綁定記錄管理", font=("Microsoft JhengHei", 12, "bold"))
         title.pack(anchor='w')
+
+        search_frame = ttk.Frame(f)
+        search_frame.pack(fill='x', pady=5)
+
+        ttk.Label(search_frame, text="查詢方式：").pack(side='left', padx=5)
+        self.search_mode = tk.StringVar(value="all")
+        mode_frame = ttk.Frame(search_frame)
+        mode_frame.pack(side='left', padx=5)
+        ttk.Radiobutton(mode_frame, text="全部", variable=self.search_mode, value="all", command=self.on_search_mode_change).pack(side='left', padx=2)
+        ttk.Radiobutton(mode_frame, text="依綁定人", variable=self.search_mode, value="binder", command=self.on_search_mode_change).pack(side='left', padx=2)
+        ttk.Radiobutton(mode_frame, text="依被綁定人", variable=self.search_mode, value="patient", command=self.on_search_mode_change).pack(side='left', padx=2)
+        ttk.Radiobutton(mode_frame, text="依時間", variable=self.search_mode, value="time", command=self.on_search_mode_change).pack(side='left', padx=2)
+
+        keyword_frame = ttk.Frame(search_frame)
+        keyword_frame.pack(side='left', padx=5)
+        ttk.Label(keyword_frame, text="關鍵字：", font=("Microsoft JhengHei", 9)).pack(side='left', padx=2)
+        self.bind_search_var = tk.StringVar()
+        self.bind_search_entry = ttk.Entry(keyword_frame, textvariable=self.bind_search_var, width=15, font=("Microsoft JhengHei", 10))
+        self.bind_search_entry.pack(side='left', padx=2)
+        self.bind_search_entry.bind("<Return>", lambda e: self.do_name_search())
+        ttk.Button(keyword_frame, text="查詢", command=self.do_name_search).pack(side='left', padx=2)
+        ttk.Button(keyword_frame, text="清除", command=self.clear_binding_search).pack(side='left', padx=2)
+
+        hint_frame = ttk.Frame(f)
+        hint_frame.pack(fill='x', pady=3)
+        ttk.Label(hint_frame, text="💡 姓名/身份證/生日/RECNO/時間 任一字元符合即可。生日請輸入6位數，如：490101。時間格式：2026-07-05（任一字元符合即可）", font=("Microsoft JhengHei", 9), foreground="blue").pack(side='left', padx=5)
+
+        self.time_search_frame = ttk.Frame(search_frame)
+        self.time_search_frame.pack(side='left', padx=5)
+        ttk.Label(self.time_search_frame, text="時間：", font=("Microsoft JhengHei", 9)).pack(side='left', padx=2)
+        self.bind_time_var = tk.StringVar()
+        ttk.Entry(self.time_search_frame, textvariable=self.bind_time_var, width=14, font=("Microsoft JhengHei", 10)).pack(side='left', padx=2)
+        ttk.Button(self.time_search_frame, text="查詢", command=self.do_binding_time_search).pack(side='left', padx=2)
+        ttk.Button(self.time_search_frame, text="清除", command=self.clear_binding_search).pack(side='left', padx=2)
+        ttk.Label(self.time_search_frame, text="💡 格式：2026-07-05 任一字元符合即可", font=("Microsoft JhengHei", 9), foreground="blue").pack(side='left', padx=5)
+        self.bind_time_var.trace_add('write', lambda *a: self.do_binding_time_search())
+        self.time_search_frame.pack_forget()
 
         list_frame = ttk.Frame(f)
         list_frame.pack(fill='both', expand=True, pady=10)
@@ -331,7 +478,7 @@ class App:
 
         btn_frame = ttk.Frame(f)
         btn_frame.pack(pady=5)
-        ttk.Button(btn_frame, text="刷新列表", command=self.refresh_binding_list).pack(side='left', padx=5)
+        ttk.Button(btn_frame, text="刷新列表", command=lambda: self.refresh_binding_list()).pack(side='left', padx=5)
         ttk.Button(btn_frame, text="解除綁定", command=self.on_unbind_select).pack(side='left', padx=5)
 
         self.bind_info_label = ttk.Label(f, text="", foreground="blue", font=("Microsoft JhengHei", 10))
@@ -344,14 +491,134 @@ class App:
 
         self.refresh_binding_list()
 
-    def refresh_binding_list(self):
+    def on_search_mode_change(self):
+        mode = self.search_mode.get()
+        if mode == "time":
+            self.bind_search_entry.pack_forget()
+            self.time_search_frame.pack(side='left', padx=5)
+        else:
+            self.time_search_frame.pack_forget()
+            self.bind_search_entry.pack(side='left', padx=2)
+        self.do_name_search()
+
+    def do_name_search(self):
+        mode = self.search_mode.get()
+        keyword = self.bind_search_var.get().strip()
+        if mode == "time":
+            return
+        if not keyword:
+            self.refresh_binding_list(show_all=True)
+            return
+        self.refresh_binding_list(show_all=False)
+
+    def clear_binding_search(self):
+        self.bind_search_var.set("")
+        self.bind_time_var.set("")
+        self.search_mode.set("all")
+        self.on_search_mode_change()
+
+    def refresh_binding_list(self, show_all=False):
         self.bind_listbox.delete(0, tk.END)
-        records = get_active_binding_records()
+        mode = self.search_mode.get()
+        keyword = self.bind_search_var.get().strip()
+
+        if mode == "time":
+            filter_time = self.bind_time_var.get().strip()
+            if not filter_time:
+                self.bind_info_label.config(text="請輸入時間關鍵字（例如：20260705）")
+                return
+            records = get_active_binding_records()
+            records = [r for r in records if filter_time in r[9]]
+        elif show_all or not keyword:
+            records = get_active_binding_records()
+        else:
+            records = search_binding_records(keyword, mode)
+
         for rec in records:
-            _, patient_name, recno, _, binding_time, status = rec
-            display = f"{patient_name} | RECNO：{recno} | 綁定時間：{binding_time} | 狀態：{status}"
+            _, binder_name, binder_idno, binder_birth, patient_name, patient_idno, patient_birth, recno, _, binding_time, status = rec
+            binder_display = f"{binder_name}(生日:{format_birth(binder_birth)}/ID:{binder_idno})" if binder_idno or binder_birth else binder_name
+            patient_display = f"{patient_name}(生日:{format_birth(patient_birth)}/ID:{patient_idno})" if patient_idno or patient_birth else patient_name
+            display = f"{binder_display} 綁定 {patient_display} | RECNO：{recno} | 綁定時間：{binding_time}"
             self.bind_listbox.insert(tk.END, display)
-        self.bind_info_label.config(text=f"共 {len(records)} 筆有效綁定")
+
+        mode_names = {"all": "全部", "binder": "綁定人", "patient": "被綁定人", "time": "時間"}
+        if mode == "time":
+            filter_desc = f"（時間：{filter_time}）"
+        elif show_all or not keyword:
+            filter_desc = "（全部）"
+        else:
+            filter_desc = f"（{mode_names.get(mode, '全部')}：{keyword}）"
+        self.bind_info_label.config(text=f"共 {len(records)} 筆符合 {filter_desc}")
+
+    def do_binding_time_search(self):
+        mode = self.search_mode.get()
+        if mode != "time":
+            return
+        filter_time = self.bind_time_var.get().strip()
+        if not filter_time:
+            self.bind_listbox.delete(0, tk.END)
+            self.bind_info_label.config(text="請輸入時間關鍵字（例如：20260705）")
+            return
+        self.refresh_binding_list()
+
+    def do_binding_time_search(self):
+        self.refresh_binding_list()
+
+    def do_binding_time_search(self):
+        filter_time = self.bind_search_var.get().strip()
+        self.refresh_binding_list(filter_time if filter_time else None)
+
+    def do_binder_search(self):
+        if not self.records:
+            messagebox.showwarning("警告", "patdb 尚未載入")
+            return
+        keyword = self.binder_search_var.get().strip()
+        if not keyword:
+            return
+        results = search_records(self.records, keyword)
+        self.binder_listbox.delete(0, tk.END)
+        for rec in results:
+            name = rec.get("NAME", "")
+            idno = rec.get("ID", "")
+            birth = rec.get("BIRTH", "")
+            sex = rec.get("SEX", "")
+            recno = rec["_recno"]
+            display = f"{name} | {idno} | 生日：{birth} | 性別：{sex} | RECNO：{recno}"
+            self.binder_listbox.insert(tk.END, display)
+        self.binder_info_label.config(text=f"找到 {len(results)} 筆資料，請雙擊選擇")
+
+    def clear_binder_search(self):
+        self.binder_search_var.set("")
+        self.binder_listbox.delete(0, tk.END)
+        self.binder_info_label.config(text="（尚未選擇）")
+        self.selected_binder_recno = None
+        self.selected_binder_name = None
+        self.selected_binder_idno = None
+        self._update_confirm_button()
+
+    def on_binder_select(self):
+        sel = self.binder_listbox.curselection()
+        if not sel:
+            messagebox.showwarning("警告", "請先選擇一位綁定人")
+            return
+        idx = sel[0]
+        keyword = self.binder_search_var.get().strip()
+        results = search_records(self.records, keyword)
+        rec = results[idx]
+        self.selected_binder_recno = rec["_recno"]
+        self.selected_binder_name = rec.get("NAME", "")
+        self.selected_binder_idno = rec.get("ID", "")
+        self.selected_binder_birth = rec.get("BIRTH", "")
+        self.binder_info_label.config(text=f"已選擇：{self.selected_binder_name}（{self.selected_binder_idno} / 生日:{format_birth(self.selected_binder_birth)}）")
+        self._update_confirm_button()
+
+    def _update_confirm_button(self):
+        if self.selected_binder_name and self.selected_name:
+            self.confirm_btn.config(state="normal")
+            self.confirm_label.config(text=f"【A】{self.selected_binder_name} 將綁定 【B】{self.selected_name}（{self.selected_recno}）")
+        else:
+            self.confirm_btn.config(state="disabled")
+            self.confirm_label.config(text="")
 
     def on_unbind_select(self):
         sel = self.bind_listbox.curselection()
@@ -362,11 +629,29 @@ class App:
             messagebox.showerror("錯誤", "config.json 缺少 UNBIND_API_KEY 設定")
             return
         idx = sel[0]
-        records = get_active_binding_records()
-        rec = records[idx]
-        _, patient_name, recno, recno_hash, binding_time, status = rec
+        mode = self.search_mode.get()
+        keyword = self.bind_search_var.get().strip() if mode != "time" else self.bind_time_var.get().strip()
 
-        confirm = messagebox.askyesno("確認解除", f"確定要解除「{patient_name}」的綁定嗎？\nRECNO：{recno}\n綁定時間：{binding_time}\n\n若病人可操作，請引導其在 LINE「查詢就醫資訊」中解除。")
+        if mode == "time" and keyword:
+            records = get_active_binding_records()
+            records = [r for r in records if keyword in r[9]]
+        elif keyword:
+            records = search_binding_records(keyword, mode if mode != "all" else "all")
+        else:
+            records = get_active_binding_records()
+
+        rec = records[idx]
+        _, binder_name, binder_idno, binder_birth, patient_name, patient_idno, patient_birth, recno, _, binding_time, status = rec
+
+        binder_display = f"{binder_name}(生日:{format_birth(binder_birth)}/ID:{binder_idno})" if binder_idno or binder_birth else binder_name
+        patient_display = f"{patient_name}(生日:{format_birth(patient_birth)}/ID:{patient_idno})" if patient_idno or patient_birth else patient_name
+
+        confirm = messagebox.askyesno("確認解除",
+            f"確定要解除以下綁定嗎？\n\n"
+            f"【A】綁定人：{binder_display}\n"
+            f"【B】被綁定人：{patient_display}（RECNO：{recno}）\n"
+            f"綁定時間：{binding_time}\n\n"
+            f"若病人可操作，請引導其在 LINE「查詢就醫資訊」中解除。")
         if not confirm:
             return
 
@@ -377,8 +662,8 @@ class App:
                 unbind_result = call_admin_unbind(self.config["apiBaseUrl"], link_id, self.config["UNBIND_API_KEY"])
                 if unbind_result.get("ok"):
                     update_binding_status(recno_hash, "unbound")
-                    messagebox.showinfo("成功", f"已成功解除「{patient_name}」的綁定")
-                    logging.info(f"解除綁定成功：{patient_name} ({recno})")
+                    messagebox.showinfo("成功", f"已成功解除「{binder_name}」綁定「{patient_name}」的記錄")
+                    logging.info(f"解除綁定成功：{binder_name} 綁定 {patient_name} ({recno})")
                     self.refresh_binding_list()
                 else:
                     messagebox.showerror("失敗", f"解除失敗：{unbind_result.get('error')}")
@@ -417,15 +702,18 @@ class App:
     def clear_search(self):
         self.search_var.set("")
         self.result_listbox.delete(0, tk.END)
-        self.info_label.config(text="")
+        self.info_label.config(text="（尚未選擇）")
         self.code_label.config(text="（尚未產生）")
         self.expiry_label.config(text="")
         self.selected_recno = None
+        self.selected_name = None
+        self.selected_idno = None
+        self._update_confirm_button()
 
     def on_select(self):
         sel = self.result_listbox.curselection()
         if not sel:
-            messagebox.showwarning("警告", "請先選擇一位病人")
+            messagebox.showwarning("警告", "請先選擇一位被綁定人")
             return
         idx = sel[0]
         keyword = self.search_var.get().strip()
@@ -434,12 +722,44 @@ class App:
         self.selected_recno = rec["_recno"]
         self.selected_name = rec.get("NAME", "")
         self.selected_idno = rec.get("ID", "")
-        self.info_label.config(text=f"已選擇：{self.selected_name}（{self.selected_idno}）")
+        self.selected_birth = rec.get("BIRTH", "")
+        self.info_label.config(text=f"已選擇：{self.selected_name}（{self.selected_idno} / 生日:{format_birth(self.selected_birth)}）")
+        self._update_confirm_button()
+
+    def on_confirm_and_generate(self):
+        if not self.selected_binder_name or not self.selected_name:
+            messagebox.showwarning("警告", "請先選擇綁定人和被綁定人")
+            return
+        if not self.selected_recno:
+            messagebox.showwarning("警告", "請選擇被綁定人")
+            return
         self.generate_code()
 
     def generate_code(self):
         if not self.selected_recno:
             return
+
+        if not self.selected_binder_name:
+            messagebox.showwarning("警告", "請先選擇綁定人")
+            return
+
+        recno_hash = compute_recno_hash(str(self.selected_recno), self.config["APP_KEY_V1"])
+
+        if "APP_KEY_V1" in self.config:
+            existing = check_existing_binding(self.selected_binder_name, recno_hash)
+            if existing:
+                existing_rec = existing[0]
+                binder_idno = existing_rec[2] or ''
+                binder_birth = existing_rec[3] or ''
+                patient_idno = existing_rec[5] or ''
+                patient_birth = existing_rec[6] or ''
+                messagebox.showwarning("警告",
+                    f"【重複綁定】\n\n"
+                    f"「{self.selected_binder_name}」已經綁定過「{existing_rec[4]}(生日:{format_birth(patient_birth)}/ID:{patient_idno})」（RECNO：{existing_rec[7]}）\n"
+                    f"綁定時間：{existing_rec[8]}\n\n"
+                    f"請先在「綁定管理」頁面取消舊綁定，再重新產生驗證碼。")
+                return
+
         try:
             result = call_create_verify_code(self.config["apiBaseUrl"], self.selected_recno)
             if result.get("ok"):
@@ -454,13 +774,26 @@ class App:
                 self.root.clipboard_append(code)
 
                 if "APP_KEY_V1" in self.config:
-                    recno_hash = compute_recno_hash(str(self.selected_recno), self.config["APP_KEY_V1"])
-                    save_binding_record(self.selected_name, str(self.selected_recno), recno_hash, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                    save_binding_record(
+                        self.selected_binder_name,
+                        self.selected_binder_idno,
+                        self.selected_binder_birth,
+                        self.selected_name,
+                        self.selected_idno,
+                        self.selected_birth,
+                        str(self.selected_recno),
+                        recno_hash,
+                        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    )
                     self.refresh_binding_list()
-                    logging.info(f"本地綁定記錄已寫入：{self.selected_name} ({self.selected_recno})")
+                    logging.info(f"本地綁定記錄已寫入：{self.selected_binder_name} 綁定 {self.selected_name} ({self.selected_recno})")
 
                 logging.info(f"驗證碼產生成功：recno={self.selected_recno}, code={code}")
-                messagebox.showinfo("成功", f"驗證碼已產生並複製到剪貼簿\n代碼：{code}\n有效期至：{local_dt}")
+                messagebox.showinfo("成功",
+                    f"驗證碼已產生並複製到剪貼簿\n"
+                    f"代碼：{code}\n"
+                    f"有效期至：{local_dt}\n\n"
+                    f"請告訴「{self.selected_binder_name}」到 LINE 輸入驗證碼")
             else:
                 messagebox.showerror("失敗", f"API 回傳錯誤：{result}")
                 logging.error(f"API 回傳失敗：{result}")

@@ -536,3 +536,95 @@ Flex Carousel（顯示所有綁定，藍色「選擇」按鈕）
 
 #### 櫃台引導
 查到記錄後，畫面顯示「請病人在 LINE 的『查詢就醫資訊』中操作解除」。
+
+---
+
+## Debug Tools（2026-07-05）
+
+| 用途 | URL |
+|------|-----|
+| 查詢用戶所有綁定 | `https://lineid-code.zeabur.app/api/query-bindings?lineUserId=LINE用戶ID` |
+| 查詢 linkId by recno_hash | `https://lineid-code.zeabur.app/api/admin/links-by-recno-hash?recno_hash=xxx`（需 x-unbind-api-key） |
+
+---
+
+## 2026-07-06 更新（v1.11）：patdb_query.py 增强
+
+### 新增功能
+
+#### 1. 支援「綁定人 A → 被綁定人 B」一对一关系
+
+**流程变更**：
+```
+舊流程：選病人 → 產生驗證碼
+新流程：選綁定人A → 選被綁定人B → 檢查是否重複 → 產生驗證碼
+```
+
+#### 2. 本地 SQLite Schema 更新
+
+```sql
+CREATE TABLE binding_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    binder_name TEXT NOT NULL,        -- 綁定人姓名
+    binder_idno TEXT,                 -- 綁定人身分證
+    binder_birth TEXT,                -- 綁定人生日（6位數如490101）
+    patient_name TEXT NOT NULL,       -- 被綁定人姓名
+    patient_idno TEXT,                -- 被綁定人身分證
+    patient_birth TEXT,                -- 被綁定人生日
+    recno TEXT NOT NULL,              -- 病歷號
+    recno_hash TEXT NOT NULL,
+    binding_time TEXT NOT NULL,
+    status TEXT DEFAULT 'active',
+    created_at TEXT
+)
+```
+
+#### 3. 重複綁定檢查
+
+產生驗證碼前檢查本地資料庫是否已有相同「綁定人 + 被綁定人」的 active 記錄。
+
+#### 4. Tab2 查詢方式
+
+| 模式 | 說明 |
+|------|------|
+| 全部 | 顯示所有有效綁定 |
+| 依綁定人 | 搜尋 binder_name / binder_idno / binder_birth |
+| 依被綁定人 | 搜尋 patient_name / patient_idno / patient_birth / recno |
+| 依時間 | 輸入 2026-07-06 格式 |
+
+#### 5. 日期格式顯示
+
+- 輸入：6位數如 `490101`（民國年MMdd）
+- 顯示：自動轉換為 `49/01/01` 格式
+
+### UI 提示說明
+
+**Tab1（驗證碼產生）**：
+- 標籤：`搜尋（姓名/身份證/生日）：`
+- 提示：`💡 生日請輸入6位數，如：490101，顯示會自動轉為 49/01/01`
+
+**Tab2（綁定管理）**：
+- 關鍵字搜尋提示：`💡 姓名/身份證/生日/RECNO 任一字元符合即符合。生日請輸入6位數，如：490101。`
+- 時間搜尋提示：`💡 格式：2026-07-05 任一字元符合即可`
+
+### 顯示格式
+
+```
+【A】張大明(生日:49/01/01/ID:A123456789) 綁定 【B】陳大同(生日:52/06/18/ID:B987654321) | RECNO：003245 | 綁定時間：2026-07-06
+```
+
+### 新增函式
+
+| 函式 | 用途 |
+|------|------|
+| `format_birth(birth)` | 將 490101 轉換為 49/01/01 |
+| `check_existing_binding(binder_name, recno_hash)` | 檢查是否重複綁定 |
+| `search_binding_records(keyword, search_type)` | 支援姓名/身份證/生日/RECNO 搜尋 |
+| `on_binder_select()` | 選擇綁定人 |
+| `on_confirm_and_generate()` | 確認後產生驗證碼 |
+
+### 備註
+
+- 本地資料庫 `bindings.db` 需刪除後重新建立（schema 有變更）
+- 雲端資料庫 `line_user_links` 無需變更（不同架構）
+- 所有個人資料僅存於本地，不上傳雲端
