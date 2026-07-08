@@ -1162,6 +1162,16 @@ async function handleChronicPrescriptionQuery(event, linkId) {
     const recnoRes = await fetch(`${baseUrl}/api/admin/recno-by-link?link_id=${linkId}`, {
       headers: { 'x-unbind-api-key': process.env.UNBIND_API_KEY || '' }
     });
+    if (!recnoRes.ok) {
+      console.error(`[chronic_prescription] API error: ${recnoRes.status} ${recnoRes.statusText}`);
+      return { type: 'text', text: '❌ 系統錯誤，請稍後再試。' };
+    }
+    const contentType = recnoRes.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const text = await recnoRes.text();
+      console.error('[chronic_prescription] Not JSON:', text.substring(0, 200));
+      return { type: 'text', text: '❌ 系統錯誤，請稍後再試。' };
+    }
     const recnoResult = await recnoRes.json();
     if (!recnoResult.ok || !recnoResult.data?.recno) {
       return { type: 'text', text: '最近三個月內查無慢性病領藥記錄。' };
