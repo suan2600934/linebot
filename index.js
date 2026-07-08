@@ -264,7 +264,7 @@ async function handleTextMessage(event) {
   // 驗證碼處理（6位數字）→ 呼叫 lineid_code 驗證
   if (/^\d{6}$/.test(text)) {
     try {
-      const verifyRes = await fetch(`${process.env.LINEID_CODE_URL}/api/verify`, {
+      const verifyRes = await fetch(`${process.env.API_BASE_URL}/api/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: text, lineUserId: userId })
@@ -958,7 +958,7 @@ async function handleQueryBindings(event) {
   const lineUserId = event.source.userId;
   
   try {
-    const baseUrl = process.env.LINEID_CODE_URL || 'https://lineid-code.zeabur.app';
+    const baseUrl = process.env.API_BASE_URL || 'https://lineid-code.zeabur.app';
     const apiRes = await fetch(`${baseUrl}/api/query-bindings?lineUserId=${encodeURIComponent(lineUserId)}`, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' }
@@ -1067,7 +1067,7 @@ async function handleViewMedicalInfo(event, linkId) {
 
 // 取消綁定 - 確認（串接 lineid_code）
 async function handleUnbindConfirm(event, linkId) {
-  const baseUrl = process.env.LINEID_CODE_URL || 'https://lineid-code.zeabur.app';
+  const baseUrl = process.env.API_BASE_URL || 'https://lineid-code.zeabur.app';
   const lineUserId = event.source.userId;
   
   try {
@@ -1117,7 +1117,7 @@ async function handleUnbindConfirm(event, linkId) {
 
 // 取消綁定 - 執行（串接 lineid_code）
 async function handleUnbindExecute(event, linkId) {
-  const baseUrl = process.env.LINEID_CODE_URL || 'https://lineid-code.zeabur.app';
+  const baseUrl = process.env.API_BASE_URL || 'https://lineid-code.zeabur.app';
   
   try {
     const apiRes = await fetch(`${baseUrl}/api/unbind`, {
@@ -1151,7 +1151,7 @@ async function handleUnbindCancel(event) {
 
 // 慢性病領藥查詢
 async function handleChronicPrescriptionQuery(event, linkId) {
-  const baseUrl = process.env.LINEID_CODE_URL || 'https://lineid-code.zeabur.app';
+  const baseUrl = process.env.API_BASE_URL || 'https://lineid-code.zeabur.app';
 
   if (!linkId) {
     return { type: 'text', text: '❌ 參數錯誤，請重新操作。' };
