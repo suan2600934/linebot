@@ -351,6 +351,8 @@ async function handlePostback(event) {
     replyMessage = await handleUnbindConfirm(event, linkId);
   } else if (action === 'unbind_execute' && linkId) {
     replyMessage = await handleUnbindExecute(event, linkId);
+  } else if (action === 'chronic_prescription_query' && linkId) {
+    replyMessage = await handleChronicPrescriptionQuery(event, linkId);
   } else if (data === 'action=unbind_cancel' || data === 'action=query_bindings') {
     replyMessage = await handleQueryBindings(event);
   } else if (data === 'action=coming_soon') {
@@ -966,7 +968,7 @@ async function handleQueryBindings(event) {
     if (!result.ok || !result.data || result.data.length === 0) {
       return {
         type: 'text',
-        text: '【查詢就醫資訊】\n\n您尚未綁定就醫身份。\n\n請至診所櫃台索取驗證碼進行綁定。'
+        text: '【查詢就醫資訊】\n\n您尚未綁定就醫身份。\n\n請相關民眾親自攜帶健保卡和身份證至診所櫃台索取驗證碼進行綁定。'
       };
     }
     
@@ -1055,7 +1057,7 @@ async function handleViewMedicalInfo(event, linkId) {
           },
           {
             type: 'button',
-            action: { type: 'postback', label: '💊 領藥時間（施工中）', data: 'action=coming_soon' }
+            action: { type: 'postback', label: '💊 慢性病領藥查詢', data: 'action=chronic_prescription_query&link_id=' + linkId }
           }
         ]
       }
@@ -1145,6 +1147,123 @@ async function handleUnbindExecute(event, linkId) {
 // 取消綁定 - 取消
 async function handleUnbindCancel(event) {
   return { type: 'text', text: '已取消解除綁定操作。' };
+}
+
+// 慢性病領藥查詢
+async function handleChronicPrescriptionQuery(event, linkId) {
+  const baseUrl = process.env.LINEID_CODE_URL || 'https://lineid-code.zeabur.app';
+
+  if (!linkId) {
+    return { type: 'text', text: '❌ 參數錯誤，請重新操作。' };
+  }
+
+  let recno;
+  try {
+    const recnoRes = await fetch(`${baseUrl}/api/admin/recno-by-link?link_id=${linkId}`, {
+      headers: { 'x-unbind-api-key': process.env.UNBIND_API_KEY || '' }
+    });
+    const recnoResult = await recnoRes.json();
+    if (!recnoResult.ok || !recnoResult.data?.recno) {
+      return { type: 'text', text: '最近三個月內查無慢性病領藥記錄。' };
+    }
+    recno = recnoResult.data.recno;
+  } catch (err) {
+    console.error('[chronic_prescription] recno error:', err);
+    return { type: 'text', text: '❌ 系統錯誤，請稍後再試。' };
+  }
+
+  const { data: prescription, error } = await supabase
+    .from('chronic_prescriptions_date')
+    .select('*')
+    .eq('code', recno)
+    .single();
+
+  if (error || !prescription) {
+    return { type: 'text', text: '最近三個月內查無慢性病領藥記錄。' };
+  }
+
+  const maskRecno = (r) => r && r.length >= 3 ? r[0] + '*****' + r.slice(-1) : r;
+
+  const rocToDate = (rocStr) => {
+    if (!rocStr || rocStr.length < 5) return null;
+    try {
+      const prefix = rocStr[0].toUpperCase();
+      let year, month, day;
+      if (prefix === 'A' || prefix === 'B') {
+        // 舊格式：B50701 → B=11, year_digit=5 → 115 年
+        const yearBase = prefix.charCodeAt(0) - 64 + 9;
+        const yearDigit = parseInt(rocStr[1]);  // 只取 1 位數
+        year = yearBase * 10 + yearDigit;
+        month = parseInt(rocStr.slice(2, 4));
+        day = parseInt(rocStr.slice(4, 6));
+      } else {
+        // 新格式：1150928 → ROC 年=115
+        year = parseInt(rocStr.slice(0, 3));
+        month = parseInt(rocStr.slice(3, 5));
+        day = parseInt(rocStr.slice(5, 7));
+      }
+      return new Date(year + 1911, month - 1, day);
+    } catch { return null; }
+  };
+
+  const dateToRocStr = (d) => {
+    if (!d) return '';
+    const ry = d.getFullYear() - 1911;
+    return `${String(ry).padStart(3, '0')}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+  };
+
+  const fmtDate = (d) => d ? `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}` : '';
+
+  const serno1 = prescription.serno1_date;
+  const serno2 = prescription.serno2_date;
+  const serno3 = prescription.serno3_date;
+  const perDays = prescription.per_days || 30;
+  const serno1Date = rocToDate(serno1);
+
+  let suggested2 = '', suggested3 = '', warn2 = false, warn3 = false;
+  if (serno1Date) {
+    const addDays = perDays === 28 ? 22 : 26;
+    const add3Days = perDays === 28 ? 50 : 53;
+    const s2 = new Date(serno1Date);
+    s2.setDate(s2.getDate() + addDays);
+    const s3 = new Date(serno1Date);
+    s3.setDate(s3.getDate() + add3Days);
+    suggested2 = fmtDate(s2);
+    suggested3 = fmtDate(s3);
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    if (!serno2 && s2 < today) warn2 = true;
+    if (!serno3 && s3 < today) warn3 = true;
+  }
+
+  const expireRoc = prescription.expire_date;
+  const expireDate = rocToDate(expireRoc);
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const daysLeft = expireDate ? Math.ceil((expireDate - today) / 86400000) : null;
+
+  const fmtSerno = (date, sugg, isWarn) => {
+    if (date) return `${fmtDate(rocToDate(date))}（已領）`;
+    if (isWarn) return `${sugg}（⚠️ 逾期未領）`;
+    return `${sugg}（建議領藥日）`;
+  };
+
+  let text = `【慢性病領藥查詢】
+
+就醫卡號：${maskRecno(recno)}
+
+第1次領藥：${fmtSerno(serno1, '', false)}`;
+  if (serno2 || suggested2) text += `\n第2次領藥：${fmtSerno(serno2, suggested2, warn2)}`;
+  if (serno3 || suggested3) text += `\n第3次領藥：${fmtSerno(serno3, suggested3, warn3)}`;
+  if (expireRoc) {
+    text += `\n\n處方效期：至 ${fmtDate(expireDate)}`;
+    if (daysLeft !== null) {
+      if (daysLeft < 0) text += `\n⚠️ 處方已過期，請回診`;
+      else if (daysLeft <= 30) text += `\n⚠️ 還有 ${daysLeft} 天效期，請在過期前完成領藥`;
+    }
+  }
+
+  return { type: 'text', text };
 }
 
 // 健康檢查

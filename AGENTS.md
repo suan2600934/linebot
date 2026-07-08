@@ -42,6 +42,7 @@
 | 健康檢查/兒童疫苗 | Supabase services 表 | 更新 Supabase 即可 |
 | AI 知識庫 | Supabase knowledge_base 表 | 編輯 md → 叫我 sync |
 | 班表圖片 | Supabase Storage | 上傳圖片即可 |
+| **慢性病慢連箋** | **slow_rec.dbf → Supabase chronic_prescriptions_date** | **sync script 每 7 天** |
 
 ### AI 知識庫更新流程
 ```
@@ -69,6 +70,15 @@
 ### 優先級 4：Facebook 自動上傳
 - [ ] Token 重新申請（目前過期，手動上傳中）
 
+### 優先級 5：慢性病領藥查詢（LINE Bot）✅ 已完成
+- [x] `lineid_code/index.js` - 新增 `/api/admin/recno-by-link` API
+- [x] 建立 Supabase 資料表 `chronic_prescriptions_date`
+- [x] 建立 sync script（每 7 天排程）
+- [x] `index.js`（LINE Bot）- 「💊 領藥時間」改為「💊 慢性病領藥查詢」，實作處理邏輯
+- [x] 日期格式統一 - Supabase 存 `1150928`（7位數），LINE Bot 回覆 `2026/09/28`
+- [x] `rocToDate()` 支援新舊格式（`B50701` 和 `1150928`）
+- [x] 錯誤訊息改為「最近三個月內查無慢性病領藥記錄。」
+
 ---
 
 ## 🔧 技術細節
@@ -87,6 +97,9 @@ NIM_MODEL=nvidia/llama-3.3-nemotron-super-49b-v1
 # Supabase
 SUPABASE_URL=https://kbpyxboleoefwvdnjcod.supabase.co
 SUPABASE_SERVICE_KEY=eyJhbGci...
+
+# LINE ID Code Service
+LINEID_CODE_URL=https://lineid-code.zeabur.app
 ```
 
 ### 服務網址
@@ -109,6 +122,136 @@ node -e "require('./index.js'); syncKnowledgeBase()"
 
 ---
 
+## 📅 2026-07-06 工作進度
+
+### 🆕 慢性病領藥查詢系統（規劃中）
+
+#### 需求背景
+- 慢性病連續處方箋效期：90 天（30天×3次）或 84 天（28天×3次）
+- 每次回診開一張慢連箋，一張慢連箋可領 3 次藥
+- 病人點選「💊 慢性病領藥查詢」後，根據綁定的病歷號查詢最近三個月內的慢連箋領藥記錄
+
+#### slow_rec.dbf 欄位說明（慢連箋領藥紀錄）
+| 欄位 | 說明 | 範例 |
+|------|------|------|
+| CODE | 病歷號（6位） | 036787 |
+| DATE | 首次開立慢連箋日期（民國，A=10X年，B=11X年） | B00516 |
+| S_DATE | 本次實際領藥日期（民國） | B50604 |
+| S_SERNO | 慢連箋第幾次領藥（1/2/3） | 1, 2, 3 |
+| S_DAYS | 慢連箋總天數（90或84） | 90 |
+| DAYS | 每次給藥天數（30或28） | 30 |
+| MEMO | 主診斷 ICD-9 碼 | 4019 |
+
+#### 日期格式
+- `A` 開頭：民國 10X 年（例 A50806 → 108/08/06）
+- `B` 開頭：民國 11X 年（例 B20821 → 112/08/21）
+
+#### 資料群組邏輯（已確認）
+```
+一個 CODE 同時只有一張慢連箋（效期內，診所規定）
+同一個 CODE，可能有很多張不同的慢連箋（每次回診開新的）
+同一個 DATE，只屬於某一張慢連箋
+
+在最近 90 天內的記錄中：
+→ 對每個 CODE，取 DATE 最大的那一筆 = 目前有效的慢連箋
+→ DATE 較小的 = 已過期或放棄的舊慢連箋（不理會）
+```
+
+#### Supabase 資料表規劃
+```sql
+CREATE TABLE chronic_prescriptions_date (
+    id SERIAL PRIMARY KEY,
+    code VARCHAR(10) NOT NULL,           -- 病歷號
+    first_date VARCHAR(10) NOT NULL,     -- 首次開立日期（民國，如 B00516）
+    total_days INTEGER NOT NULL,         -- 總天數（90 或 84）
+    per_days INTEGER NOT NULL,           -- 每次給藥天數（30 或 28）
+    serno1_date VARCHAR(10),             -- 第1次領藥日期（NULL=未領）
+    serno2_date VARCHAR(10),             -- 第2次領藥日期
+    serno3_date VARCHAR(10),             -- 第3次領藥日期
+    expire_date VARCHAR(10) NOT NULL,    -- 過期日（計算值）
+    synced_at TIMESTAMPTZ DEFAULT now(), -- 同步時間
+    UNIQUE(code)                         -- 每個病歷號只有一筆
+);
+```
+
+#### Sync Script 規劃
+```
+執行頻率：每 7 天（排程）
+資料來源：H:\clinic_file\slow_rec.dbf
+目標：Supabase chronic_prescriptions_date
+
+邏輯：
+1. 讀取 slow_rec.dbf 最近 90 天內所有記錄
+2. 依 CODE 分組
+3. 對每個 CODE，取 DATE 最大的那一筆（目前有效的慢連箋）
+4. 從該筆記錄取出 S_SERNO 1/2/3 的 S_DATE
+5. 計算 expire_date = 第1次領藥日 + (per_days * 3 - 1) 天
+6. Upsert 到 Supabase
+```
+
+#### 新 API 規劃（lineid_code/index.js）
+```
+GET /api/admin/recno-by-link?link_id=xxx
+Header: x-unbind-api-key: <key>
+
+用途：LINE Bot 收到「慢性病查詢」時，用 link_id 取得完整 recno 來查 Supabase
+
+Response:
+{ "ok": true, "data": { "recno": "036787" } }
+或
+{ "ok": false, "error": "找不到" }
+```
+
+#### LINE Bot 回覆流程（已確認）
+```
+圖文選單「查詢就醫資訊」(action=query_bindings)
+    ↓
+Flex Carousel（顯示所有綁定，藍色「選擇」按鈕）
+    ↓
+點 [選擇] → handleViewMedicalInfo → Flex 選單（5個按鈕）
+    ↓
+點 [💊 慢性病領藥查詢] → action=chronic_prescription_query&link_id=xxx
+    ↓
+LINE Bot 呼叫 lineid_code 取得完整 recno
+    ↓
+查詢 Supabase chronic_prescriptions_date
+    ↓
+回覆慢連箋領藥資訊
+```
+
+#### LINE Bot 回覆格式規劃
+```
+【慢性病領藥查詢】
+
+就醫卡號：0*****7
+
+第1次領藥：114/05/01（已領）
+第2次領藥：114/05/31（已領）
+第3次領藥：114/06/28（建議領藥日）
+
+處方效期：至 114/08/02
+⚠️ 還有 27 天效期，請在過期前完成第 3 次領藥
+```
+
+**病歷號遮罩格式**：`第一碼*****最後一碼`（如 `036787` → `0*****7`）
+
+**逾時未領藥提醒邏輯**：
+- 第2次：未領 + 建議日已過 → ⚠️ 第2次已逾期，請盡快領藥
+- 第3次：未領 + 建議日已過 → ⚠️ 第3次已逾期，請盡快領藥
+- 處方已過期 → ⚠️ 處方已過期，請回診
+
+#### 實作清單（這次）
+1. [x] `lineid_code/index.js` - 新增 `/api/admin/recno-by-link` API
+2. [x] Supabase - 建立 `chronic_prescriptions_date` 資料表（`database/chronic_prescriptions_date.sql`）
+3. [x] sync script - 建立並設定排程（每 7 天）
+4. [x] `index.js`（LINE Bot）- 「💊 領藥時間」改為「💊 慢性病領藥查詢」，實作處理邏輯
+
+#### 不在這次實作範圍
+- ICD-10 診斷名稱對照（只顯示 ICD 碼）
+- 欠單查詢、抽血報告、慢性病資訊
+
+---
+
 ## 📅 2026-06-27 工作進度
 
 ### ✅ LINE 帳號綁定系統（lineid_code/）
@@ -123,7 +266,7 @@ node -e "require('./index.js'); syncKnowledgeBase()"
 | `verification_codes` | 5 分鐘有效驗證碼（code_hash / recno_encrypted / recno_hash / key_version） |
 | `line_user_links` | 正式綁定（encrypted_line_id / encrypted_recno / user_id_hash / recno_hash / key_version） |
 | `line_user_links_history` | 綁定/解綁時間軸（稽核用） |
-| `verification_codes_archive` | 30 天前記錄歸檔 |
+| `verification_codes_archive` | 30 天前台端需要綁定 |
 
 #### 加密設計
 - **HMAC-SHA256**：code_hash / recno_hash / user_id_hash（不可逆，防彩虹表）
@@ -262,8 +405,136 @@ git push origin --delete line-binding
 
 ---
 
-**最後更新**：2026-06-29 21:10
-**狀態**：LINE 取消綁定功能實作完成，已通過測試
+**最後更新**：2026-07-08
+**狀態**：慢性病領藥查詢系統實作完成，等待部署驗證
+
+---
+
+## 📅 2026-07-08 工作進度
+
+### ✅ 慢性病領藥查詢系統（實作完成）
+
+#### 核心功能
+- [x] `lineid_code/index.js` - 新增 `/api/admin/recno-by-link` API
+- [x] Supabase - 建立 `chronic_prescriptions_date` 資料表
+- [x] sync script - `sync_chronic.py` 每 7 天排程同步
+- [x] `index.js`（LINE Bot）- 「💊 領藥時間」改為「💊 慢性病領藥查詢」
+- [x] 日期格式修正 - 統一使用 7 位數 ROC 格式（`1150928`）
+
+#### 回覆格式
+```
+【慢性病領藥查詢】
+
+就醫卡號：0*****7
+
+第1次領藥：2026/07/01（已領）
+第2次領藥：2026/07/31（建議領藥日）
+第3次領藥：2026/08/28（建議領藥日）
+
+處方效期：至 2026/09/28
+⚠️ 還有 27 天效期，請在過期前完成第 3 次領藥
+```
+
+#### 錯誤訊息
+- 查無記錄：「最近三個月內查無慢性病領藥記錄。」
+- 系統錯誤：「❌ 系統錯誤，請稍後再試。」
+
+---
+
+## 📊 ROC 日期格式處理邏輯
+
+### 資料流
+```
+slow_rec.dbf (DBF)
+    ↓ [讀取原始記錄]
+    ├── DATE 欄位：B50701（A/B 前綴格式，6 字元）
+    ├── S_DATE 欄位：B50701（A/B 前綴格式，6 字元）
+    ↓ [dbf_date_to_roc() 轉換]
+Supabase chronic_prescriptions_date
+    ├── first_date：1150701（ROC 格式，7 位數，無 A/B 前綴）
+    ├── serno1_date：1150701
+    ├── serno2_date：null / 1150731
+    ├── serno3_date：null / 1150830
+    ├── expire_date：1150928
+    ↓ [rocToDate() 解析]
+LINE Bot 回覆
+    └── 顯示：2026/09/28（西元格式）
+```
+
+### 欄位說明
+| 欄位 | 來源 | 說明 | 是否為 null |
+|------|------|------|-------------|
+| `first_date` | DBF `DATE` | 慢連箋開立日期（醫師開處方日） | 否 |
+| `serno1_date` | DBF `S_DATE` (S_SERNO=1) | 第1次實際領藥日 | 是（若尚未領） |
+| `serno2_date` | DBF `S_DATE` (S_SERNO=2) | 第2次實際領藥日 | 是 |
+| `serno3_date` | DBF `S_DATE` (S_SERNO=3) | 第3次實際領藥日 | 是 |
+| `expire_date` | 計算值 | 過期日 = serno1_date + total_days - 1 | 否 |
+| `total_days` | DBF `S_DAYS` | 總天數（90 或 84） | 否 |
+| `per_days` | DBF `DAYS` | 每次給藥天數（30 或 28） | 否 |
+
+**注意**：`first_date` 和 `serno1_date` 理論上可能是不同日期（開立日 vs 實際領藥日），但目前 sync 邏輯中，若病人已領第1次，兩者通常相同。
+
+### 函式職責對照表
+
+| 檔案 | 函式 | 輸入格式 | 輸出格式 | 用途 |
+|------|------|----------|----------|------|
+| `sync_chronic.py` | `dbf_roc_to_date()` | `B50701`（6字元含A/B前綴） | Python datetime | 讀取 DBF 原始資料、計算近90天過濾、排序取最大DATE |
+| `sync_chronic.py` | `dbf_date_to_roc()` | `B50701`（6字元含A/B前綴） | `1150701`（7位數） | 存入 Supabase 前去除 A/B 前綴 |
+| `sync_chronic.py` | `roc_to_date()` | `1150701`（7位數或6位數） | Python datetime | 解析已轉換的 ROC 字串（用於計算過期日） |
+| `sync_chronic.py` | `date_to_roc()` | Python datetime | `1150928`（7位數） | 計算過期日後存回 Supabase |
+| `index.js` | `rocToDate()` | `B50701`（舊）或 `1150928`（新） | JS Date | LINE Bot 讀取 Supabase 資料後解析日期 |
+| `index.js` | `dateToRocStr()` | JS Date | `115/09/28`（顯示用） | LINE Bot 回覆時格式化給病人看 |
+
+### DBF A/B 格式解析規則（用於 `dbf_roc_to_date()`）
+```
+A5 = 10*10 + 5 = 105 年（ROC 105 年 = 西元 2016 年）
+B5 = 11*10 + 5 = 115 年（ROC 115 年 = 西元 2026 年）
+
+B50701 → B（prefix=11）+ 5（year_digit）+ 07（月）+ 01（日）
+       → ROC 115/07/01 → 西元 2026/07/01
+```
+
+### Supabase 儲存格式（無 A/B 前綴）
+```
+1150701 = ROC 115 年 07 月 01 日 = 西元 2026/07/01
+1150928 = ROC 115 年 09 月 28 日 = 西元 2026/09/28
+```
+
+### 過去 Bug 原因分析（2026-07-08）
+1. **expire_date 輸出 `B150928`（7字元）**：錯誤使用 `year_part: 02d`，導致 `B15`（=125年）而非 `B5`（=115年）
+   - 修正：`date_to_roc()` 改為 `f"{roc_year}{date_obj.month:02d}{date_obj.day:02d}"`，輸出固定 7 位數
+2. **roc_to_date() 用於 DBF 原始資料**：兩種格式混用導致解析失敗
+   - 修正：分開 `dbf_roc_to_date()`（解析含 A/B 前綴）和 `roc_to_date()`（解析純數字格式）
+3. **LINE Bot `rocToDate()` 只支援舊格式**：無法解析 Supabase 的 `1150928`
+   - 修正：同時支援 `A/B` 前綴（舊）和純數字（新）兩種格式
+
+### index.js rocToDate() 邏輯
+```javascript
+const rocToDate = (rocStr) => {
+    if (!rocStr || rocStr.length < 5) return null;
+    try {
+      const prefix = rocStr[0].toUpperCase();
+      let year, month, day;
+      if (prefix === 'A' || prefix === 'B') {
+        // 舊格式：B50701 → B=11, year_digit=5 → 115 年
+        const yearBase = prefix.charCodeAt(0) - 64 + 9;  // A=10, B=11
+        const yearDigit = parseInt(rocStr[1]);  // 只取 1 位數！
+        year = yearBase * 10 + yearDigit;
+        month = parseInt(rocStr.slice(2, 4));
+        day = parseInt(rocStr.slice(4, 6));
+      } else {
+        // 新格式：1150928 → ROC 年=115
+        year = parseInt(rocStr.slice(0, 3));
+        month = parseInt(rocStr.slice(3, 5));
+        day = parseInt(rocStr.slice(5, 7));
+      }
+      return new Date(year + 1911, month - 1, day);
+    } catch { return null; }
+  };
+```
+
+### LINE Bot 回覆給病人的日期格式
+病人看到的是 `2026/09/28`（西元年月日），不是 `1150928` 或 `B50928`。
 
 ---
 
@@ -298,32 +569,47 @@ Flex Carousel（顯示所有綁定，藍色「選擇」按鈕）
 - [ ] 欠單查詢（action=coming_soon）
 - [ ] 抽血報告（action=coming_soon）
 - [ ] 慢性病資訊（action=coming_soon）
-- [ ] 領藥時間（action=coming_soon）
-- [x] patdb_query.py（櫃台端查詢/取消綁定）- **待實作本地綁定記錄功能**
+- [x] 領藥時間 → 改為「💊 慢性病領藥查詢」（2026-07-06 規劃）
+- [x] patdb_query.py（櫃台端查詢/取消綁定）- **v1.11 已實作完成**
 
-#### patdb_query.py 實作需求（v1.10）
-**目的**：在綁定當下記錄病患姓名 + recno + 綁定時間，解除時可輸入時間查詢
+#### patdb_query.py 實作需求（v1.11 已完成）
 
-**本地資料欄位（綁定時記錄）**：
-| 欄位 | 說明 |
-|------|------|
-| `id` | 自增 ID |
-| `patient_name` | 病患姓名 |
-| `recno` | 病歷號 |
-| `recno_hash` | HMAC-SHA256(recno, APP_KEY) |
-| `binding_time` | 綁定時間 |
-| `status` | active / unbound |
+**目的**：支援「綁定人 A → 被綁定人 B」一對一關係，解決多人共用LINE導致無法確認要取消哪個的問題
 
-**解除時完整流程**：
-1. 輸入綁定時間 → 查到本地記錄
-2. 用 recno_hash 查 line_user_links（透過 GET /api/admin/links-by-recno-hash）
-3. 取得 linkId → 呼叫 /api/unbind { linkId }
+**本地 SQLite Schema（v1.11）**：
+```sql
+CREATE TABLE binding_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    binder_name TEXT NOT NULL,        -- 綁定人姓名
+    binder_idno TEXT,                 -- 綁定人身分證
+    binder_birth TEXT,                -- 綁定人生日（6位數如490101）
+    patient_name TEXT NOT NULL,       -- 被綁定人姓名
+    patient_idno TEXT,                -- 被綁定人身分證
+    patient_birth TEXT,               -- 被綁定人生日
+    recno TEXT NOT NULL,              -- 病歷號
+    recno_hash TEXT NOT NULL,
+    binding_time TEXT NOT NULL,
+    status TEXT DEFAULT 'active',
+    created_at TEXT
+)
+```
 
-**需新增的 API**：
-- `GET /api/admin/links-by-recno-hash` - 需 UNBIND_API_KEY 驗證
-- `POST /api/admin/unbind` - 需 UNBIND_API_KEY 驗證
+**功能**：
+- Tab1 分為「綁定人 A」和「被綁定人 B」兩個搜尋區
+- 產生驗證碼前檢查是否重複綁定（A 已綁過 B）
+- Tab2 四種查詢方式：全部 / 依綁定人 / 依被綁定人 / 依時間
+- 生日輸入 490101，顯示自動轉為 49/01/01
 
-**程式路徑**：`H:\opencode\linebot\lineid_code\patdb_query.py`（本地執行，不上雲端）
+**UI 提示**：
+- `💡 生日請輸入6位數，如：490101，顯示會自動轉為 49/01/01`
+- `💡 姓名/身份證/生日/RECNO 任一字元符合即符合`
+
+**顯示格式**：
+```
+【A】張大明(生日:49/01/01/ID:A123456789) 綁定 【B】陳大同(生日:52/06/18/ID:B987654321) | RECNO：003245
+```
+
+**重要**：刪除 `bindings.db` 後重新執行（schema 有變更）
 
 #### 重要 Commit 記錄（更新）
 | Commit | 說明 |
@@ -335,7 +621,7 @@ Flex Carousel（顯示所有綁定，藍色「選擇」按鈕）
 
 ---
 
-## 📅 歷史記錄（2026-06-13 ~ 2026-06-21）
+## 📅 歷史記錄（2026-06-13 ~ 2026-21）
 
 ### 2026-06-21
 - GitHub 倉庫建立

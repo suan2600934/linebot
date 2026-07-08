@@ -636,6 +636,36 @@ app.get('/api/admin/links-by-recno-hash', async (req, res) => {
   }
 });
 
+// ─── 內部 API：查詢完整 recno by link_id（供 LINE Bot 慢性病查詢用）───
+app.get('/api/admin/recno-by-link', async (req, res) => {
+  const providedKey = req.get('x-unbind-api-key');
+  if (!process.env.UNBIND_API_KEY || providedKey !== process.env.UNBIND_API_KEY) {
+    return res.status(401).json({ ok: false, error: '未授權' });
+  }
+  const { link_id } = req.query || {};
+  if (!link_id) {
+    return badRequest(res, '缺少 link_id');
+  }
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(
+      `SELECT encrypted_recno, key_version FROM line_user_links
+        WHERE id = $1 AND status = 'active' LIMIT 1`,
+      [link_id]
+    );
+    if (rows.length === 0) {
+      return res.json({ ok: false, error: '找不到' });
+    }
+    const recno = decrypt(rows[0].encrypted_recno, rows[0].key_version);
+    return res.json({ ok: true, data: { recno } });
+  } catch (err) {
+    console.error('[recno-by-link] error:', err);
+    return res.status(500).json({ ok: false, error: '系統錯誤,請稍後再試' });
+  } finally {
+    client.release();
+  }
+});
+
 // ─── 內部 API：取消綁定（供櫃台系統呼叫）───
 app.post('/api/admin/unbind', express.json(), async (req, res) => {
   const providedKey = req.get('x-unbind-api-key');
