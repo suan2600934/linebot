@@ -264,7 +264,7 @@ async function handleTextMessage(event) {
   // 驗證碼處理（6位數字）→ 呼叫 lineid_code 驗證
   if (/^\d{6}$/.test(text)) {
     try {
-      const verifyRes = await fetch(`${process.env.API_BASE_URL}/api/verify`, {
+      const verifyRes = await fetch(`${process.env.API_BASE_URL || 'https://lineid-code.zeabur.app'}/api/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: text, lineUserId: userId })
