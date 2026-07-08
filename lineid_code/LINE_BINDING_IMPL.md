@@ -1,6 +1,6 @@
 # LINE 帳號綁定系統 — 實作紀錄
 
-## 📅 最後更新：2026-06-29（v1.9）
+## 📅 最後更新：2026-07-08（v1.13）
 
 ---
 
@@ -628,3 +628,165 @@ CREATE TABLE binding_records (
 - 本地資料庫 `bindings.db` 需刪除後重新建立（schema 有變更）
 - 雲端資料庫 `line_user_links` 無需變更（不同架構）
 - 所有個人資料僅存於本地，不上傳雲端
+
+---
+
+## 2026-07-07 更新（v1.12）：慢性病領藥查詢 - 新增 /api/admin/recno-by-link
+
+### 需求背景
+
+LINE Bot「慢性病用藥查詢」功能需要透過 `link_id` 查詢完整 `recno`，但現有 `/api/query-bindings` 只回傳遮罩過的 recno（如 `036****87`）。
+
+### 解決方案
+
+新增一支內部 API `GET /api/admin/recno-by-link`，由 LINE Bot 在收到「慢性病查詢」時呼叫。
+
+### API 規格
+
+```
+GET /api/admin/recno-by-link?link_id=xxx
+Header: x-unbind-api-key: <key>
+
+Response:
+{ "ok": true, "data": { "recno": "036787" } }
+或
+{ "ok": false, "error": "找不到" }
+```
+
+### 實作狀態
+
+✅ **已實作**（2026-07-07）
+
+實作位置：`lineid_code/index.js:610-636`
+
+### 邏輯
+
+1. 驗證 `x-unbind-api-key`
+2. 根據 `link_id` 查詢 `line_user_links` 表
+3. 解密 `encrypted_recno` 取得完整 recno
+4. 回傳
+
+### 病歷號遮罩格式
+
+LINE Bot 顯示給用戶時，recno 需去識別化：
+- 格式：`第一碼*****最後一碼`
+- 範例：`036787` → `0*****7`
+
+```javascript
+// 遮罩函式
+function maskRecno(recno) {
+  if (!recno || recno.length < 3) return recno;
+  return recno[0] + '*****' + recno.slice(-1);
+}
+```
+
+---
+
+## 2026-07-08 更新（v1.13）：慢性病領藥查詢 LINE Bot 實作完成
+
+### 系統架構
+
+```
+LINE Bot 圖文選單「查詢就醫資訊」
+    ↓
+Flex Carousel（顯示所有綁定，藍色「選擇」按鈕）
+    ↓
+點 [選擇] → Flex 選單（5個按鈕）
+    ↓
+點 [💊 慢性病領藥查詢] → action=chronic_prescription_query&link_id=xxx
+    ↓
+LINE Bot 呼叫 lineid_code /api/admin/recno-by-link 取得完整 recno
+    ↓
+LINE Bot 查詢 Supabase chronic_prescriptions_date 表
+    ↓
+回覆慢連箋領藥資訊
+```
+
+### 資料來源
+
+| 來源 | 說明 |
+|------|------|
+| `slow_rec.dbf` | 診所HIS慢連箋領藥紀錄（每7天同步一次） |
+| `chronic_prescriptions_date` | Supabase 同步後的慢連箋資料表 |
+
+### Supabase 資料表
+
+```sql
+CREATE TABLE chronic_prescriptions_date (
+    id SERIAL PRIMARY KEY,
+    code VARCHAR(10) NOT NULL,           -- 病歷號
+    first_date VARCHAR(10) NOT NULL,     -- 首次開立日期（ROC格式，如 1150701）
+    total_days INTEGER NOT NULL,         -- 總天數（90 或 84）
+    per_days INTEGER NOT NULL,            -- 每次給藥天數（30 或 28）
+    serno1_date VARCHAR(10),             -- 第1次領藥日期（NULL=未領）
+    serno2_date VARCHAR(10),             -- 第2次領藥日期
+    serno3_date VARCHAR(10),             -- 第3次領藥日期
+    expire_date VARCHAR(10) NOT NULL,    -- 過期日（計算值）
+    synced_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(code)
+);
+```
+
+### ROC 日期格式
+
+| 格式 | 來源 | 範例 |
+|------|------|------|
+| DBF 原始（6字元含A/B前綴） | slow_rec.dbf DATE/S_DATE 欄位 | `B50701` |
+| Supabase 儲存（7位數） | sync_chronic.py 輸出 | `1150701` |
+| LINE Bot 顯示 | 轉換後 | `2026/07/01` |
+
+**格式轉換邏輯**：
+- `B50701` → B=11, year_digit=5 → ROC 115年 → `1150701`（存入 Supabase）
+- `1150701` → ROC 年=115 → 西元 2026年 → `2026/07/01`（顯示給病人）
+
+### 回覆格式
+
+```
+【慢性病領藥查詢】
+
+就醫卡號：0*****7
+
+第1次領藥：2026/07/01（已領）
+第2次領藥：2026/07/31（建議領藥日）
+第3次領藥：2026/08/28（建議領藥日）
+
+處方效期：至 2026/09/28
+⚠️ 還有 27 天效期，請在過期前完成第 3 次領藥
+```
+
+### 逾時未領藥提醒邏輯
+
+| 情境 | 顯示 |
+|------|------|
+| 第2次：未領 + 建議日已過 | `（⚠️ 逾期未領）` |
+| 第3次：未領 + 建議日已過 | `（⚠️ 逾期未領）` |
+| 處方已過期 | `⚠️ 處方已過期，請回診` |
+| 效期 ≤ 30 天 | `⚠️ 還有 N 天效期，請在過期前完成領藥` |
+
+### 實作檔案
+
+| 檔案 | 說明 |
+|------|------|
+| `index.js`（LINE Bot 主程式） | `handleChronicPrescriptionQuery()` 函式（line 1149-1271） |
+| `lineid_code/index.js` | `/api/admin/recno-by-link` API（line 610-636） |
+| `Medication_Reminder/sync_chronic.py` | 同步腳本（每7天排程） |
+| `database/chronic_prescriptions_date.sql` | 資料表 + RPC function 定義 |
+
+### 建議領藥日計算
+
+- **第2次建議日**：serno1_date + (per_days === 28 ? 22 : 26) 天
+- **第3次建議日**：serno1_date + (per_days === 28 ? 50 : 53) 天
+- **過期日**：serno1_date + total_days - 1 天
+
+### 同步頻率
+
+| 事件 | 頻率 |
+|------|------|
+| slow_rec.dbf → Supabase | 每 7 天（排程） |
+| LINE Bot 查詢 | 即時（病人點選時） |
+
+### 待驗證
+
+- [ ] Zeabur 部署完成後，確認 LINE Bot 回覆正確
+- [ ] 確認有慢連箋記錄的病人可查到正確資訊
+- [ ] 確認無記錄的病人回覆「最近三個月內查無慢性病領藥記錄。」
