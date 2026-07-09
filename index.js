@@ -1225,7 +1225,7 @@ async function handleChronicPrescriptionQuery(event, linkId) {
 
   const fmtDate = (d) => d ? `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}` : '';
 
-  const serno1 = prescription.serno1_date;
+  const serno1 = prescription.serno1_date || prescription.first_date;
   const serno2 = prescription.serno2_date;
   const serno3 = prescription.serno3_date;
   const perDays = prescription.per_days || 30;
@@ -1284,6 +1284,12 @@ async function handleChronicPrescriptionQuery(event, linkId) {
         text += `\n第3次建議領藥區間：${fmtDate(s3Min)}-${fmtDate(expDateOnly)}`;
       }
     }
+  } else {
+    const s2Actual = serno2Date;
+    const s3Actual = serno3Date;
+    text += `\n第2次領藥：${fmtDate(s2Actual)}（已領）`;
+    text += `\n第3次領藥：${fmtDate(s3Actual)}（已領）`;
+    text += `\n\n✅ 此慢性病處方已完成領藥`;
   }
 
   if (expireRoc) {
