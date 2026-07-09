@@ -1233,7 +1233,6 @@ async function handleChronicPrescriptionQuery(event, linkId) {
   const serno2Date = rocToDate(serno2);
   const expireRoc = prescription.expire_date;
   const expireDate = rocToDate(expireRoc);
-  const fmtDate = (d) => d ? `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}` : '';
 
   const addDays = perDays === 28 ? 20 : 22;
   const add3Days = perDays === 28 ? 47 : 52;
