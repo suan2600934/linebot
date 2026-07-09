@@ -1244,27 +1244,31 @@ async function handleChronicPrescriptionQuery(event, linkId) {
 第1次領藥：${fmtDate(serno1Date)}（已領）`;
 
   if (!serno2) {
-    const s2 = new Date(serno1Date);
-    s2.setDate(s2.getDate() + addDays);
-    const s3 = new Date(serno1Date);
-    s3.setDate(s3.getDate() + add3Days);
-    text += `\n第2次建議領藥日：${fmtDate(s2)}`;
-    text += `\n第3次建議領藥日：${fmtDate(s3)}`;
+    const s2Min = new Date(serno1Date);
+    s2Min.setDate(s2Min.getDate() + addDays);
+    const s2Max = new Date(s2Min);
+    s2Max.setDate(s2Max.getDate() + 8);
+    const s3Min = new Date(serno1Date);
+    s3Min.setDate(s3Min.getDate() + add3Days);
+    const s3Max = new Date(s3Min);
+    s3Max.setDate(s3Max.getDate() + 8);
+    text += `\n第2次建議領藥區間：${fmtDate(s2Min)}-${fmtDate(s2Max)}`;
+    text += `\n第3次建議領藥區間：${fmtDate(s3Min)}-${fmtDate(s3Max)}`;
   } else if (!serno3) {
     const s2Actual = serno2Date;
     const s2Suggested = new Date(serno1Date);
     s2Suggested.setDate(s2Suggested.getDate() + addDays);
     const delayed = s2Actual > s2Suggested;
-    let s3Base = delayed ? s2Actual : serno1Date;
-    s3Base = new Date(s3Base);
-    s3Base.setDate(s3Base.getDate() + addDays);
-    let s3Min = new Date(s3Base);
+    const s3Base = delayed ? s2Actual : serno1Date;
+    const s3Min = new Date(s3Base);
+    s3Min.setDate(s3Min.getDate() + addDays);
     const today = new Date();
     today.setHours(0,0,0,0);
     if (s3Min < today) {
       s3Min = today;
     }
-    const s3Max = new Date(s3Base);
+    const s3Max = new Date(s3Min);
+    s3Max.setDate(s3Max.getDate() + 8);
     let s3Display = `${fmtDate(s3Min)}-${fmtDate(s3Max)}`;
     if (expireDate) {
       const expDateOnly = new Date(expireDate);
@@ -1277,7 +1281,7 @@ async function handleChronicPrescriptionQuery(event, linkId) {
         text += `\n第3次建議領藥區間：${s3Display}`;
       } else {
         text += `\n\n第2次領藥：${fmtDate(s2Actual)}（已領）${delayed ? '（延後領藥）' : ''}`;
-        text += `\n第3次建議領藥區間：${fmtDate(s3Min)}-${fmtDate(expDateOnly)}（建議效期內領取）`;
+        text += `\n第3次建議領藥區間：${fmtDate(s3Min)}-${fmtDate(expDateOnly)}`;
       }
     }
   }
