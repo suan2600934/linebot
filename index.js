@@ -1230,49 +1230,71 @@ async function handleChronicPrescriptionQuery(event, linkId) {
   const serno3 = prescription.serno3_date;
   const perDays = prescription.per_days || 30;
   const serno1Date = rocToDate(serno1);
-
-  let suggested2 = '', suggested3 = '', warn2 = false, warn3 = false;
-  if (serno1Date) {
-    const addDays = perDays === 28 ? 22 : 26;
-    const add3Days = perDays === 28 ? 50 : 53;
-    const s2 = new Date(serno1Date);
-    s2.setDate(s2.getDate() + addDays);
-    const s3 = new Date(serno1Date);
-    s3.setDate(s3.getDate() + add3Days);
-    suggested2 = fmtDate(s2);
-    suggested3 = fmtDate(s3);
-    const today = new Date();
-    today.setHours(0,0,0,0);
-    if (!serno2 && s2 < today) warn2 = true;
-    if (!serno3 && s3 < today) warn3 = true;
-  }
-
+  const serno2Date = rocToDate(serno2);
   const expireRoc = prescription.expire_date;
   const expireDate = rocToDate(expireRoc);
-  const today = new Date();
-  today.setHours(0,0,0,0);
-  const daysLeft = expireDate ? Math.ceil((expireDate - today) / 86400000) : null;
+  const fmtDate = (d) => d ? `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}` : '';
 
-  const fmtSerno = (date, sugg, isWarn) => {
-    if (date) return `${fmtDate(rocToDate(date))}（已領）`;
-    if (isWarn) return `${sugg}（⚠️ 逾期未領）`;
-    return `${sugg}（建議領藥日）`;
-  };
+  const addDays = perDays === 28 ? 20 : 22;
+  const add3Days = perDays === 28 ? 47 : 52;
 
   let text = `【慢性病領藥查詢】
 
 就醫卡號：${maskRecno(recno)}
 
-第1次領藥：${fmtSerno(serno1, '', false)}`;
-  if (serno2 || suggested2) text += `\n第2次領藥：${fmtSerno(serno2, suggested2, warn2)}`;
-  if (serno3 || suggested3) text += `\n第3次領藥：${fmtSerno(serno3, suggested3, warn3)}`;
+第1次領藥：${fmtDate(serno1Date)}（已領）`;
+
+  if (!serno2) {
+    const s2 = new Date(serno1Date);
+    s2.setDate(s2.getDate() + addDays);
+    const s3 = new Date(serno1Date);
+    s3.setDate(s3.getDate() + add3Days);
+    text += `\n第2次建議領藥日：${fmtDate(s2)}`;
+    text += `\n第3次建議領藥日：${fmtDate(s3)}`;
+  } else if (!serno3) {
+    const s2Actual = serno2Date;
+    const s2Suggested = new Date(serno1Date);
+    s2Suggested.setDate(s2Suggested.getDate() + addDays);
+    const delayed = s2Actual > s2Suggested;
+    let s3Base = delayed ? s2Actual : serno1Date;
+    s3Base = new Date(s3Base);
+    s3Base.setDate(s3Base.getDate() + addDays);
+    let s3Min = new Date(s3Base);
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    if (s3Min < today) {
+      s3Min = today;
+    }
+    const s3Max = new Date(s3Base);
+    let s3Display = `${fmtDate(s3Min)}-${fmtDate(s3Max)}`;
+    if (expireDate) {
+      const expDateOnly = new Date(expireDate);
+      expDateOnly.setHours(0,0,0,0);
+      if (expDateOnly < s3Min) {
+        text += `\n\n第2次領藥：${fmtDate(s2Actual)}（已領）${delayed ? '（延後領藥）' : ''}`;
+        text += `\n\n⚠️ 第3次已過期，請回診`;
+      } else if (expDateOnly >= s3Max) {
+        text += `\n\n第2次領藥：${fmtDate(s2Actual)}（已領）${delayed ? '（延後領藥）' : ''}`;
+        text += `\n第3次建議領藥區間：${s3Display}`;
+      } else {
+        text += `\n\n第2次領藥：${fmtDate(s2Actual)}（已領）${delayed ? '（延後領藥）' : ''}`;
+        text += `\n第3次建議領藥區間：${fmtDate(s3Min)}-${fmtDate(expDateOnly)}（建議效期內領取）`;
+      }
+    }
+  }
+
   if (expireRoc) {
     text += `\n\n處方效期：至 ${fmtDate(expireDate)}`;
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const daysLeft = expireDate ? Math.ceil((expireDate - today) / 86400000) : null;
     if (daysLeft !== null) {
       if (daysLeft < 0) text += `\n⚠️ 處方已過期，請回診`;
       else if (daysLeft <= 30) text += `\n⚠️ 還有 ${daysLeft} 天效期，請在過期前完成領藥`;
     }
   }
+
+  text += `\n\nℹ️ 以上資訊僅供參考，實際可領藥日期會因實際餘藥數量變動。`;
 
   return { type: 'text', text };
 }
