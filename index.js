@@ -1231,6 +1231,7 @@ async function handleChronicPrescriptionQuery(event, linkId) {
   const perDays = prescription.per_days || 30;
   const serno1Date = rocToDate(serno1);
   const serno2Date = rocToDate(serno2);
+  const serno3Date = rocToDate(serno3);
   const expireRoc = prescription.expire_date;
   const expireDate = rocToDate(expireRoc);
 
