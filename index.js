@@ -1182,10 +1182,11 @@ async function handleChronicPrescriptionQuery(event, linkId) {
     return { type: 'text', text: '❌ 系統錯誤，請稍後再試。' };
   }
 
+  const recnoPadded = recno.padStart(6, '0');
   const { data: prescription, error } = await supabase
     .from('chronic_prescriptions_date')
     .select('*')
-    .eq('code', recno)
+    .eq('code', recnoPadded)
     .single();
 
   if (error || !prescription) {
