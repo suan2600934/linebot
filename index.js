@@ -355,6 +355,8 @@ async function handlePostback(event) {
     replyMessage = await handleChronicPrescriptionQuery(event, linkId);
   } else if (data === 'action=unbind_cancel' || data === 'action=query_bindings') {
     replyMessage = await handleQueryBindings(event);
+  } else if (action === 'blood_test_query' && linkId) {
+    replyMessage = await handleBloodTestQuery(event, linkId);
   } else if (data === 'action=coming_soon') {
     replyMessage = { type: 'text', text: '此功能正在施工中，敬請期待！' };
   }
@@ -1049,7 +1051,7 @@ async function handleViewMedicalInfo(event, linkId) {
           },
           {
             type: 'button',
-            action: { type: 'postback', label: '💉 抽血報告（施工中）', data: 'action=coming_soon' }
+            action: { type: 'postback', label: '💉 抽血日期查詢', data: 'action=blood_test_query&link_id=' + linkId }
           },
           {
             type: 'button',
@@ -1305,6 +1307,89 @@ async function handleChronicPrescriptionQuery(event, linkId) {
   }
 
   text += `\n\nℹ️ 以上資訊僅供參考，實際可領藥日期會因實際餘藥數量變動。`;
+
+  return { type: 'text', text };
+}
+
+// 抽血日期查詢
+async function handleBloodTestQuery(event, linkId) {
+  const baseUrl = process.env.API_BASE_URL || 'https://lineid-code.zeabur.app';
+
+  if (!linkId) {
+    return { type: 'text', text: '❌ 參數錯誤，請重新操作。' };
+  }
+
+  let recno;
+  try {
+    const recnoRes = await fetch(`${baseUrl}/api/admin/recno-by-link?link_id=${linkId}`, {
+      headers: { 'x-unbind-api-key': process.env.UNBIND_API_KEY || '' }
+    });
+    if (!recnoRes.ok) {
+      console.error(`[blood_test] API error: ${recnoRes.status}`);
+      return { type: 'text', text: '❌ 系統錯誤，請稍後再試。' };
+    }
+    const contentType = recnoRes.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      return { type: 'text', text: '❌ 系統錯誤，請稍後再試。' };
+    }
+    const recnoResult = await recnoRes.json();
+    if (!recnoResult.ok || !recnoResult.data?.recno) {
+      return { type: 'text', text: '查無抽血記錄。' };
+    }
+    recno = recnoResult.data.recno;
+  } catch (err) {
+    console.error('[blood_test] recno error:', err);
+    return { type: 'text', text: '❌ 系統錯誤，請稍後再試。' };
+  }
+
+  const { data: bloodTests, error } = await supabase
+    .from('blood_test_dates')
+    .select('*')
+    .eq('chart_no', recno)
+    .order('do_date', { ascending: true });
+
+  if (error || !bloodTests || bloodTests.length === 0) {
+    return { type: 'text', text: '最近半年內查無抽血記錄。' };
+  }
+
+  const maskRecno = (r) => r && r.length >= 3 ? r[0] + '*****' + r.slice(-1) : r;
+
+  const fmtDoDate = (doDate) => {
+    if (!doDate) return '';
+    const dateInt = parseInt(doDate);
+    const rocYear = Math.floor(dateInt / 10000);
+    const remainder = dateInt % 10000;
+    const month = Math.floor(remainder / 100);
+    const day = remainder % 100;
+    const westernYear = rocYear + 1911;
+    return `${westernYear}/${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}`;
+  };
+
+  const firstCreatedAt = bloodTests.length > 0 && bloodTests[0].created_at
+    ? (() => {
+        const d = new Date(bloodTests[0].created_at);
+        return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
+      })()
+    : null;
+
+  const count = bloodTests.length;
+  let text = `【抽血日期查詢】
+
+就醫卡號：${maskRecno(recno)}
+
+最近半年內共有 ${count} 次抽血記錄：${firstCreatedAt ? `（資料上傳日：' + firstCreatedAt + '）` : ''}
+
+`;
+
+  bloodTests.forEach((bt, i) => {
+    const dateStr = fmtDoDate(bt.do_date);
+    text += `第 ${i + 1} 次：${dateStr}`;
+    if (i < bloodTests.length - 1) text += '\n';
+  });
+
+  text += `\n\nℹ️ 如有疑問請致電診所 (05) 260-0934
+
+📌 提醒：抽血報告有異常或需定期追蹤者，建議每 3-6 個月定期抽血追蹤。`;
 
   return { type: 'text', text };
 }
