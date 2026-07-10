@@ -680,7 +680,7 @@ Flex Carousel（顯示所有綁定，藍色「選擇」按鈕）
 
 #### 待未來實作
 - [ ] 欠單查詢（action=coming_soon）
-- [ ] 抽血報告（action=coming_soon）
+- [x] 抽血日期查詢（action=blood_test_query）✅ 2026-07-10
 - [ ] 慢性病資訊（action=coming_soon）
 - [x] 領藥時間 → 改為「💊 慢性病領藥查詢」（2026-07-06 規劃）
 - [x] patdb_query.py（櫃台端查詢/取消綁定）- **v1.11 已實作完成**

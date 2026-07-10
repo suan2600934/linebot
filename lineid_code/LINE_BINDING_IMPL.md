@@ -462,9 +462,9 @@ Flex Carousel（顯示所有綁定，藍色「選擇」按鈕）
 | 功能 | 修改檔案 | 說明 |
 |------|----------|------|
 | 欠單查詢 | `index.js` | 新增 `handleDebtQuery()`，串接 lineid_code 或直接查詢 Supabase |
-| 抽血報告 | `index.js` | 新增 `handleBloodReportQuery()` |
+| ~~抽血報告~~ | `index.js` | ✅ 改為「抽血日期查詢」→ `handleBloodTestQuery()` ✅ 2026-07-10 |
 | 慢性病資訊 | `index.js` | 新增 `handleChronicDiseaseInfo()` |
-| 領藥時間 | `index.js` | 新增 `handleMedicationReminder()` |
+| ~~領藥時間~~ | `index.js` | ✅ 改為「慢性病領藥查詢」→ `handleChronicPrescriptionQuery()` ✅ 2026-07-09 |
 | patdb_query.py | `lineid_code/patdb_query.py` | 櫃台端查詢/取消綁定工具（需解密 + 對照本地 patdb.dbf） |
 
 **備註**：這些功能需要先確認資料來源（Supabase 資料表或本地資料庫），再實作對應的 API 和 Flex Message 介面。
