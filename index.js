@@ -1377,7 +1377,7 @@ async function handleBloodTestQuery(event, linkId) {
 
 就醫卡號：${maskRecno(recno)}
 
-最近半年內共有 ${count} 次抽血記錄：${firstCreatedAt ? `（資料上傳日：' + firstCreatedAt + '）` : ''}
+最近半年內共有 ${count} 次抽血記錄：${firstCreatedAt ? `（資料上傳日：${firstCreatedAt}）` : ''}
 
 `;
 
