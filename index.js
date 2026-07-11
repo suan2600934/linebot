@@ -357,6 +357,8 @@ async function handlePostback(event) {
     replyMessage = await handleQueryBindings(event);
   } else if (action === 'blood_test_query' && linkId) {
     replyMessage = await handleBloodTestQuery(event, linkId);
+  } else if (action === 'debt_query' && linkId) {
+    replyMessage = await handleDebtQuery(event, linkId);
   } else if (data === 'action=coming_soon') {
     replyMessage = { type: 'text', text: '此功能正在施工中，敬請期待！' };
   }
@@ -1047,15 +1049,11 @@ async function handleViewMedicalInfo(event, linkId) {
           },
           {
             type: 'button',
-            action: { type: 'postback', label: '📋 欠單查詢（施工中）', data: 'action=coming_soon' }
+            action: { type: 'postback', label: '📋 欠單查詢', data: 'action=debt_query&link_id=' + linkId }
           },
           {
             type: 'button',
             action: { type: 'postback', label: '💉 抽血日期查詢', data: 'action=blood_test_query&link_id=' + linkId }
-          },
-          {
-            type: 'button',
-            action: { type: 'postback', label: '🩺 慢性病資訊（施工中）', data: 'action=coming_soon' }
           },
           {
             type: 'button',
@@ -1307,6 +1305,70 @@ async function handleChronicPrescriptionQuery(event, linkId) {
   }
 
   text += `\n\nℹ️ 以上資訊僅供參考，實際可領藥日期會因實際餘藥數量變動。`;
+
+  return { type: 'text', text };
+}
+
+// 欠單查詢
+async function handleDebtQuery(event, linkId) {
+  const baseUrl = process.env.API_BASE_URL || 'https://lineid-code.zeabur.app';
+
+  if (!linkId) {
+    return { type: 'text', text: '❌ 參數錯誤，請重新操作。' };
+  }
+
+  let recno;
+  try {
+    const recnoRes = await fetch(`${baseUrl}/api/admin/recno-by-link?link_id=${linkId}`, {
+      headers: { 'x-unbind-api-key': process.env.UNBIND_API_KEY || '' }
+    });
+    if (!recnoRes.ok) {
+      console.error(`[debt_query] API error: ${recnoRes.status} ${recnoRes.statusText}`);
+      return { type: 'text', text: '❌ 系統錯誤，請稍後再試。' };
+    }
+    const contentType = recnoRes.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const text = await recnoRes.text();
+      console.error('[debt_query] Not JSON:', text.substring(0, 200));
+      return { type: 'text', text: '❌ 系統錯誤，請稍後再試。' };
+    }
+    const recnoResult = await recnoRes.json();
+    if (!recnoResult.ok || !recnoResult.data?.recno) {
+      return { type: 'text', text: '❌ 系統錯誤，請稍後再試。' };
+    }
+    recno = recnoResult.data.recno;
+  } catch (err) {
+    console.error('[debt_query] recno error:', err);
+    return { type: 'text', text: '❌ 系統錯誤，請稍後再試。' };
+  }
+
+  const recnoPadded = recno.padStart(6, '0');
+  const { data: deposits, error } = await supabase
+    .from('deposit_refund')
+    .select('*')
+    .eq('chart_no', recnoPadded)
+    .order('deposit_date_west', { ascending: false });
+
+  const maskRecno = (r) => r && r.length >= 3 ? r[0] + '*****' + r.slice(-1) : r;
+
+  let text = `【欠單查詢】
+
+就醫卡號：${maskRecno(recno)}
+
+`;
+
+  if (error || !deposits || deposits.length === 0) {
+    text += '目前查無欠單或退款記錄。\n';
+  } else {
+    const fmtDate = (d) => d ? d.slice(0, 10).replace(/-/g, '/') : '';
+    for (const dep of deposits) {
+      const dateStr = dep.deposit_date_west ? fmtDate(dep.deposit_date_west) : '未知日期';
+      const amount = dep.amount || 0;
+      text += `押單看診日期: ${dateStr}  押單費用: ${amount} 元\n`;
+    }
+  }
+
+  text += '\n⚠️ 每個月可以還押單的最晚日期為下個月的六號，之後診所已經申報完畢，無法再退費。';
 
   return { type: 'text', text };
 }
