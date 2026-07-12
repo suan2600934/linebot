@@ -883,7 +883,7 @@ async function getHealthExam() {
 
 ${examList}
 
-⚠️ 提醒：成人健康檢查由周見成醫師執行，請安排在周醫師門診時段前來。`
+⚠️ 提醒：預防保健檢查由周見成醫師執行，請安排在周醫師門診時段前來。`
       },
       {
         type: 'image',
@@ -919,7 +919,7 @@ ${vaccineList}
 
 💉 請攜帶兒童健康手冊，電話預約 (05) 260-0934
 
-⚠️ 提醒：兒童預防注射由周見成醫師執行，請家長安排在周醫師門診時段帶小朋友前來。`
+⚠️ 提醒：兒童預防保健和兒童預防注射由周見成醫師執行，請家長安排在周醫師門診時段帶小朋友前來。`
       },
       {
         type: 'image',
@@ -1305,6 +1305,13 @@ async function handleChronicPrescriptionQuery(event, linkId) {
   }
 
   text += `\n\nℹ️ 以上資訊僅供參考，實際可領藥日期會因實際餘藥數量變動。`;
+
+  if (prescription.synced_at) {
+    const syncDate = new Date(prescription.synced_at);
+    const taiwanTime = new Date(syncDate.getTime() + 8 * 3600000);
+    const syncStr = `${taiwanTime.getFullYear()}/${String(taiwanTime.getMonth()+1).padStart(2,'0')}/${String(taiwanTime.getDate()).padStart(2,'0')} ${String(taiwanTime.getHours()).padStart(2,'0')}:${String(taiwanTime.getMinutes()).padStart(2,'0')}`;
+    text += `\n📅 資料更新時間：${syncStr}`;
+  }
 
   return { type: 'text', text };
 }
