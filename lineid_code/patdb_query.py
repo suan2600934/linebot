@@ -284,11 +284,21 @@ class App:
         self.selected_binder_name = None
         self.selected_binder_idno = None
         self.selected_binder_birth = None
+        self.pending_binding_info = None
 
         self.root = tk.Tk()
         self.root.title("賜安診所 - 驗證碼產生器")
         self.root.geometry("900x750")
+
+        style = ttk.Style()
+        style.theme_use("default")
+        style.configure("ConfirmLine.TButton", foreground="white", background="#0078D7", font=("Microsoft JhengHei", 10, "bold"))
+        style.map("ConfirmLine.TButton", background=[("active", "#005a9e"), ("!disabled", "#0078D7")])
+        style.configure("ConfirmLineDisabled.TButton", foreground="gray", font=("Microsoft JhengHei", 10))
+
         self.build_ui()
+        self.root.update()
+        self.tab1_canvas.bind("<MouseWheel>", lambda e: self.tab1_canvas.yview_scroll(int(-1 * (e.delta / 120)), "units"))
 
         self.load_data()
 
@@ -319,10 +329,23 @@ class App:
         self.build_tab2(tab2)
 
     def build_tab1(self, parent):
-        f = ttk.Frame(parent, padding=15)
-        f.pack(fill='both', expand=True)
+        canvas_frame = tk.Frame(parent)
+        canvas_frame.pack(fill='both', expand=True)
         parent.columnconfigure(0, weight=1)
         parent.rowconfigure(0, weight=1)
+
+        self.tab1_canvas = tk.Canvas(canvas_frame, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(canvas_frame, orient="vertical", command=self.tab1_canvas.yview)
+        self.tab1_canvas.configure(yscrollcommand=scrollbar.set)
+
+        scrollbar.pack(side="right", fill="y")
+        self.tab1_canvas.pack(side="left", fill="both", expand=True)
+
+        f = ttk.Frame(self.tab1_canvas, padding=15)
+        self.tab1_window = self.tab1_canvas.create_window((0, 0), window=f, anchor="nw")
+
+        f.bind("<Configure>", lambda e: self.tab1_canvas.configure(scrollregion=self.tab1_canvas.bbox("all")))
+        self.tab1_canvas.bind("<Configure>", lambda e: self.tab1_canvas.itemconfig(self.tab1_window, width=e.width))
 
         title = ttk.Label(f, text="賜安診所 LINE 綁定驗證碼系統", font=("Microsoft JhengHei", 14, "bold"))
         title.grid(row=0, column=0, columnspan=3, pady=(0, 5))
@@ -412,6 +435,10 @@ class App:
         self.expiry_label = ttk.Label(code_frame, text="", font=("Microsoft JhengHei", 10))
         self.expiry_label.pack()
         ttk.Button(code_frame, text="複製驗證碼", command=self.copy_code).pack(pady=5)
+        self.confirm_line_btn = ttk.Button(code_frame, text="確認 LINE 綁定", command=self.confirm_line_binding, state="disabled", style="ConfirmLineDisabled.TButton")
+        self.confirm_line_btn.pack(pady=5)
+        self.line_bind_status = ttk.Label(code_frame, text="", foreground="gray", font=("Microsoft JhengHei", 10, "bold"))
+        self.line_bind_status.pack()
 
         self.status_label = ttk.Label(f, text="", foreground="gray")
         self.status_label.grid(row=8, column=0, columnspan=3)
@@ -641,7 +668,11 @@ class App:
             records = get_active_binding_records()
 
         rec = records[idx]
-        _, binder_name, binder_idno, binder_birth, patient_name, patient_idno, patient_birth, recno, _, binding_time, status = rec
+        _, binder_name, binder_idno, binder_birth, patient_name, patient_idno, patient_birth, recno, recno_hash, binding_time, status = rec
+
+        if not recno_hash:
+            recno_hash = compute_recno_hash(str(recno), self.config.get("APP_KEY_V1", self.config.get("APP_KEY_CURRENT")))
+            logging.warning(f"recno_hash 為空，自動重新計算：{recno} -> {recno_hash}")
 
         binder_display = f"{binder_name}(生日:{format_birth(binder_birth)}/ID:{binder_idno})" if binder_idno or binder_birth else binder_name
         patient_display = f"{patient_name}(生日:{format_birth(patient_birth)}/ID:{patient_idno})" if patient_idno or patient_birth else patient_name
@@ -708,6 +739,9 @@ class App:
         self.selected_recno = None
         self.selected_name = None
         self.selected_idno = None
+        self.pending_binding_info = None
+        self.confirm_line_btn.config(state="disabled", style="")
+        self.line_bind_status.config(text="", foreground="gray")
         self._update_confirm_button()
 
     def on_select(self):
@@ -774,26 +808,69 @@ class App:
                 self.root.clipboard_append(code)
 
                 if "APP_KEY_V1" in self.config:
-                    save_binding_record(
-                        self.selected_binder_name,
-                        self.selected_binder_idno,
-                        self.selected_binder_birth,
-                        self.selected_name,
-                        self.selected_idno,
-                        self.selected_birth,
-                        str(self.selected_recno),
-                        recno_hash,
-                        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    )
-                    self.refresh_binding_list()
-                    logging.info(f"本地綁定記錄已寫入：{self.selected_binder_name} 綁定 {self.selected_name} ({self.selected_recno})")
+                    self.pending_binding_info = {
+                        "binder_name": self.selected_binder_name,
+                        "binder_idno": self.selected_binder_idno,
+                        "binder_birth": self.selected_binder_birth,
+                        "patient_name": self.selected_name,
+                        "patient_idno": self.selected_idno,
+                        "patient_birth": self.selected_birth,
+                        "recno": str(self.selected_recno),
+                        "recno_hash": recno_hash,
+                        "binding_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    }
 
                 logging.info(f"驗證碼產生成功：recno={self.selected_recno}, code={code}")
+
+                if "APP_KEY_V1" in self.config and "UNBIND_API_KEY" in self.config:
+                    try:
+                        link_result = call_get_link_by_recno_hash(self.config["apiBaseUrl"], recno_hash, self.config["UNBIND_API_KEY"])
+                        if link_result.get("ok") and link_result.get("data"):
+                            if "APP_KEY_V1" in self.config:
+                                save_binding_record(
+                                    self.selected_binder_name,
+                                    self.selected_binder_idno,
+                                    self.selected_binder_birth,
+                                    self.selected_name,
+                                    self.selected_idno,
+                                    self.selected_birth,
+                                    str(self.selected_recno),
+                                    recno_hash,
+                                    datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                )
+                            self.pending_binding_info = None
+                            self.confirm_line_btn.config(state="disabled")
+                            self.line_bind_status.config(text="")
+                            messagebox.showinfo("成功",
+                                f"LINE 已有有效綁定，本地記錄已儲存！\n\n"
+                                f"「{self.selected_binder_name}」已成功綁定「{self.selected_name}」（RECNO：{self.selected_recno}）")
+                            logging.info(f"LINE 已綁定，直接寫入本地記錄：{self.selected_binder_name} 綁定 {self.selected_name} ({self.selected_recno})")
+                            if "APP_KEY_V1" in self.config:
+                                self.refresh_binding_list()
+                            return
+                        elif link_result.get("data") is None:
+                            pass
+                        else:
+                            logging.warning(f"查詢 LINE 綁定狀態失敗：{link_result.get('error')}")
+                    except Exception as e:
+                        logging.error(f"檢查 LINE 綁定例外：{e}")
+
+                    self.confirm_line_btn.config(state="normal", style="ConfirmLine.TButton")
+                    self.line_bind_status.config(text=f"等待 LINE 綁定確認：{self.selected_binder_name} → {self.selected_name}", foreground="red")
+                    logging.info(f"確認 LINE 綁定按鈕已啟用")
+
+                elif "APP_KEY_V1" in self.config:
+                    self.confirm_line_btn.config(state="normal", style="ConfirmLine.TButton")
+                    self.line_bind_status.config(text=f"等待 LINE 綁定確認：{self.selected_binder_name} → {self.selected_name}", foreground="red")
+                    logging.info(f"確認 LINE 綁定按鈕已啟用（UNBIND_API_KEY 未設定）")
+
+                self.root.update()
                 messagebox.showinfo("成功",
                     f"驗證碼已產生並複製到剪貼簿\n"
                     f"代碼：{code}\n"
                     f"有效期至：{local_dt}\n\n"
-                    f"請告訴「{self.selected_binder_name}」到 LINE 輸入驗證碼")
+                    f"請告訴「{self.selected_binder_name}」到 LINE 輸入驗證碼\n"
+                    f"完成後，回來點「確認 LINE 綁定」")
             else:
                 messagebox.showerror("失敗", f"API 回傳錯誤：{result}")
                 logging.error(f"API 回傳失敗：{result}")
@@ -810,6 +887,54 @@ class App:
             self.root.clipboard_clear()
             self.root.clipboard_append(code)
             messagebox.showinfo("已複製", "驗證碼已複製到剪貼簿")
+
+    def confirm_line_binding(self):
+        if not self.pending_binding_info:
+            messagebox.showwarning("警告", "目前沒有待確認的綁定資訊")
+            return
+        if "UNBIND_API_KEY" not in self.config:
+            messagebox.showerror("錯誤", "config.json 缺少 UNBIND_API_KEY 設定")
+            return
+
+        info = self.pending_binding_info
+        recno_hash = info["recno_hash"]
+        binder_name = info["binder_name"]
+        patient_name = info["patient_name"]
+        recno = info["recno"]
+
+        try:
+            link_result = call_get_link_by_recno_hash(self.config["apiBaseUrl"], recno_hash, self.config["UNBIND_API_KEY"])
+            if link_result.get("ok") and link_result.get("data"):
+                save_binding_record(
+                    info["binder_name"],
+                    info["binder_idno"],
+                    info["binder_birth"],
+                    info["patient_name"],
+                    info["patient_idno"],
+                    info["patient_birth"],
+                    info["recno"],
+                    info["recno_hash"],
+                    info["binding_time"]
+                )
+                self.pending_binding_info = None
+                self.confirm_line_btn.config(state="disabled", style="")
+                self.line_bind_status.config(text="", foreground="gray")
+                self.refresh_binding_list()
+                messagebox.showinfo("成功",
+                    f"LINE 綁定成功，本地記錄已儲存！\n\n"
+                    f"「{binder_name}」已成功綁定「{patient_name}」（RECNO：{recno}）")
+                logging.info(f"LINE 綁定確認成功：{binder_name} 綁定 {patient_name} ({recno})")
+            elif link_result.get("data") is None:
+                messagebox.showwarning("尚未完成",
+                    f"LINE 尚未完成綁定\n\n"
+                    f"請確認「{binder_name}」已在 LINE 中輸入驗證碼後，再點擊「確認 LINE 綁定」")
+            else:
+                messagebox.showerror("失敗", f"查詢失敗：{link_result.get('error')}")
+        except requests.exceptions.ConnectionError:
+            messagebox.showerror("連線錯誤", f"無法連線到 API 伺服器\n{self.config['apiBaseUrl']}")
+        except Exception as e:
+            messagebox.showerror("錯誤", f"發生錯誤：\n{e}")
+            logging.error(f"確認 LINE 綁定例外：{e}")
 
     def run(self):
         self.root.mainloop()

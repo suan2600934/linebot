@@ -146,7 +146,7 @@ ${knowledgeBase}
       }
     );
 
-    const reply = response.data.choices[0].message.content;
+    const reply = response.data.choices[0].message.content.trim();
     return {
       type: 'text',
       text: reply

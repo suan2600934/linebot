@@ -5,12 +5,15 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "@line/bot-sdk": "^9.5.0",
-    "@supabase/supabase-js": "^2.39.0",
-    "axios": "^1.6.0",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "ws": "^8.16.0"
+    "@line/bot-sdk": "^9.9.0",
+    "@supabase/supabase-js": "^2.110.7",
+    "axios": "^1.18.1",
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.2",
+    "ws": "^8.21.1"
+  },
+  "devDependencies": {
+    "xlsx": "^0.18.5"
   }
 }

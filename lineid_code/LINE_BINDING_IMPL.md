@@ -1,6 +1,117 @@
 # LINE 帳號綁定系統 — 實作紀錄
 
-## 📅 最後更新：2026-07-08（v1.13）
+## 📅 最後更新：2026-07-11（v1.15）
+
+---
+
+## 📋 patdb_query.py UI 流程總覽（v1.15）
+
+### 佈局結構
+
+```
+patdb_query.py（Tkinter）
+├── 分頁 1：驗證碼產生（Tab 1，Canvas 滾動式）
+│   ├── Row 0: 標題「賜安診所 LINE 綁定驗證碼系統」
+│   ├── Row 1: 紅色提示「請先選 A 再選 B」
+│   ├── Row 2: 【A】綁定人（操作 LINE 的人）
+│   │   ├── 搜尋框 + 查詢/清除
+│   │   ├── Listbox（雙擊選擇）
+│   │   └── binder_info_label：「（尚未選擇）」（藍字）
+│   ├── Row 3: 分隔線
+│   ├── Row 4: 【B】被綁定人（要看診的病人）
+│   │   ├── 搜尋框 + 查詢/清除
+│   │   ├── Listbox（雙擊選擇）
+│   │   └── info_label：「（尚未選擇）」（藍字）
+│   ├── Row 5: [確認並產生驗證碼]（disabled → normal）
+│   ├── Row 6: confirm_label：顯示「【A】xxx 將綁定 【B】yyy（RECNO）」
+│   └── Row 7: ┌─ 驗證碼 ──────────────┐
+│       │    （尚未產生）/ 123456    │  ← code_label（紅字大字）
+│       │    有效期至：xxx           │  ← expiry_label
+│       │    [複製驗證碼]            │
+│       │    [確認 LINE 綁定]        │  ← 灰色 → 藍底（enabled）
+│       │    （等待 LINE 綁定...）    │  ← line_bind_status（紅字）
+│       └───────────────────────────────┘
+│
+└── 分頁 2：綁定管理
+    ├── 查詢方式（全部/依綁定人/依被綁定人/依時間）
+    ├── 關鍵字搜尋
+    ├── Listbox（雙擊選擇）
+    ├── [刷新列表] [解除綁定]
+    └── 櫃台引導提示
+```
+
+### 按鈕樣式
+
+| 按鈕 | 預設（disabled） | 啟用（normal） | 備註 |
+|------|----------------|---------------|------|
+| 確認並產生驗證碼 | 灰色按鈕 | 深色按鈕 | 選 A+B 後啟用 |
+| 確認 LINE 綁定 | `ConfirmLineDisabled.TButton`（灰底灰字） | `ConfirmLine.TButton`（藍底白字粗體） | 驗證碼產生後啟用 |
+| 複製驗證碼 | 淺灰按鈕 | 淺灰按鈕 | 驗證碼產生後可點 |
+| 選擇此人為綁定人 / 被綁定人 | 深色按鈕 | 深色按鈕 | 隨時可點 |
+
+### generate_code() 執行順序（2026-07-11 重構後）
+
+```python
+def generate_code():
+    # 1. 計算 recno_hash
+    recno_hash = compute_recno_hash(recno, APP_KEY_V1)
+
+    # 2. 檢查本地重複綁定（若已綁過 → 警告後 return）
+    existing = check_existing_binding(binder_name, recno_hash)
+    if existing:
+        messagebox.showwarning("重複綁定")
+        return
+
+    # 3. API 產生驗證碼
+    result = call_create_verify_code(apiBaseUrl, recno)
+
+    # 4. 顯示驗證碼 + 更新 code_label + 複製到剪貼簿
+    code_label.config(text=code)
+    root.clipboard_append(code)
+
+    # 5. 立即檢查 LINE 綁定狀態（UNBIND_API_KEY 存在時）
+    if UNBIND_API_KEY in config:
+        link_result = call_get_link_by_recno_hash(recno_hash, UNBIND_API_KEY)
+        if link_result["data"]:  # 已有綁定
+            save_binding_record(...)      # 直接寫入本地
+            messagebox.showinfo("LINE 已有有效綁定，本地記錄已儲存！")
+            return                          # ← 提早結束，不走等待流程
+
+    # 6. LINE 尚未綁定 → 啟用等待流程
+    pending_binding_info = {...}
+    confirm_line_btn.config(state="normal", style="ConfirmLine.TButton")  # 藍色
+    line_bind_status.config(text="等待 LINE 綁定確認：A → B", foreground="red")
+    root.update()
+    messagebox.showinfo("請到 LINE 輸入驗證碼，完成後點「確認 LINE 綁定」")
+```
+
+### confirm_line_binding() 執行順序
+
+```python
+def confirm_line_binding():
+    # 1. 檢查 pending_binding_info 是否存在
+    # 2. 查 LINE 連結：GET /api/admin/links-by-recno-hash
+    link_result = call_get_link_by_recno_hash(recno_hash, UNBIND_API_KEY)
+
+    if link_result["data"]:  # 已有綁定
+        save_binding_record(...)  # 寫入本地 SQLite
+        confirm_btn.config(state="disabled", style="")  # 恢復灰色
+        line_bind_status.config(text="", foreground="gray")
+        messagebox.showinfo("LINE 綁定成功，本地記錄已儲存！")
+    elif link_result["data"] is None:  # 還沒綁定
+        messagebox.showwarning("LINE 尚未完成綁定")
+```
+
+### 修復記錄（patdb_query.py）
+
+| 日期 | 問題 | 解法 |
+|------|------|------|
+| 2026-07-09 | LINE 綁定成功但本地資料庫未寫入 | 重構為「先確認 LINE 再寫入本地」 |
+| 2026-07-09 | `recno_hash` 為空導致 `on_unbind_select` 爆炸 | 從 `recno` 重新計算 |
+| 2026-07-11 | 訊息框 blocking 導致按鈕樣式變化看不見 | 訊息框前加 `root.update()` |
+| 2026-07-11 | 視窗太小看不到「驗證碼」區塊 | Tab1 改用 Canvas + Scrollbar |
+| 2026-07-11 | 按鈕初始狀態就是藍色，無法區分 | 初始用 `ConfirmLineDisabled.TButton`（灰） |
+| 2026-07-11 | 藍色按鈕外觀變化不明顯 | `root.update()` + 訊息後出讓 UI 先重繪 |
 
 ---
 

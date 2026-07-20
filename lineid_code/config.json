@@ -1,0 +1,8 @@
+{
+  "patdbPath": "H:\\clinic_file\\patdb.dbf",
+  "apiBaseUrl": "https://lineid-code.zeabur.app",
+  "logDir": "logs",
+  "APP_KEY_V1": "y7A3e6ulQoU4NlIDcSDTQr78XQmRtlHGiv+t/FQuOgU=",
+  "UNBIND_API_KEY": "2007f04e0a44bb99024a2df202c10762958ea1f65a2618217e35a89649b9b763",
+  "b52ucPath": "H:\\clinic_file\\B52UC.TXT"
+}
