@@ -64,4 +64,24 @@ git add . && git commit -m "月度更新: YYYY-MM" && git push
 
 ---
 
+## 你告訴我的口頭指令
+
+### 每次月底（當我收到以下兩項，即自動執行後續所有上傳）
+1. **「這是 OO 月班表」** → 貼上 Excel 複製的 Tab 格式文字內容
+2. **「圖檔已產生」** → 確認 `schedule-week*.png` + `schedule-full-month.jpg` 已在專案目錄
+
+### 我收到後自動執行
+```bash
+node sync-knowledge-base.js      # 同步 knowledge-base.md 到 knowledge_base 表
+node sync-schedule.js            # 同步 Tab 班表到 schedules 表
+node upload-schedule-images.js  # 上傳 schedule-week*.png + schedule-full-month.jpg 到 Supabase Storage
+```
+
+### GitHub 更新（我執行）
+```bash
+git add . && git commit -m "月度更新: YYYY-MM" && git push
+```
+
+---
+
 **最後更新**：2026-07-20
