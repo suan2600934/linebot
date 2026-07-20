@@ -822,7 +822,6 @@ git add . && git commit -m "月度更新: YYYY-MM" && git push
 ```
 
 ### 前置需知
-- `generate-weekly-schedules.js` 需要 `canvas` 模組（本機未安裝），圖檔由 PowerShell 產生
 - 你告訴我「圖檔已產生」前，請先執行：
   ```powershell
   cd H:\opencode\linebot; .\generate-schedule-image.ps1
