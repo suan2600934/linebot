@@ -805,7 +805,27 @@ A 在 LINE 輸入驗證碼 → 成功
 - 排班系統全自動化（generate-schedule-image.ps1）
 - NVIDIA NIM AI 串接完成
 
-### 2026-06-17
-- Rich Menu 四按鈕設定（藍/綠/橙/紫）
-- 班表圖片生成（Canvas）
-- NVIDIA NIM AI 串接完成
+---
+
+## 每月月底速etto流程（口頭指令版）
+
+### 你只需要說
+1. **「這是 OO 月班表」** → 貼上 Excel 複製的 Tab 文字內容
+2. **「圖檔已產生」** → 確認 schedule-week*.png + schedule-full-month.jpg 已在專案目錄
+
+### 我收到後自動執行
+```bash
+node sync-knowledge-base.js      # 同步 knowledge-base.md 到 knowledge_base 表
+node sync-schedule.js            # 同步 Tab 班表到 schedules 表
+node upload-schedule-images.js  # 上傳 schedule-week*.png + schedule-full-month.jpg 到 Supabase Storage
+git add . && git commit -m "月度更新: YYYY-MM" && git push
+```
+
+### 前置需知
+- `generate-weekly-schedules.js` 需要 `canvas` 模組（本機未安裝），圖檔由 PowerShell 產生
+- 你告訴我「圖檔已產生」前，請先執行：
+  ```powershell
+  cd H:\opencode\linebot; .\generate-schedule-image.ps1
+  ```
+
+**最後更新**：2026-07-20
