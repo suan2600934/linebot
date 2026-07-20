@@ -3,7 +3,7 @@
 ## 每月月底工作
 
 ### 1. 取得新月份班表
-從診所取得下個月的 Excel 班表（Tab 格式）
+從診所取得下個月的 Excel 班表，**直接複製 Excel 文字內容貼給我**（即 Tab 文字格式）
 
 ### 2. 更新 knowledge-base.md
 將新月份班表寫入 `knowledge-base.md` 的班表區塊（Tab 格式）
