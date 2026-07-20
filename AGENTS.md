@@ -345,7 +345,7 @@ generate-schedule-image.ps1 → schedule-full-month.jpg + knowledge-base.md
     ↓
 node generate-weekly-schedules.js → schedule-week1~5.png
     ↓
-上傳到 Supabase Storage
+node upload-schedule-images.js → 上傳到 Supabase Storage
 ```
 
 ### 醫師姓名顏色
