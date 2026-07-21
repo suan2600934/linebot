@@ -1456,9 +1456,9 @@ async function handleBloodTestQuery(event, linkId) {
         .order('created_at', { ascending: false })
         .limit(1);
       let msg = '最近半年內查無抽血記錄。';
-      if (latestSync && latestSync[0]?.created_at_taiwan) {
-        const d = new Date(latestSync[0].created_at_taiwan);
-        msg += `\n\nℹ️ 資料更新時間：${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
+      if (latestSync && latestSync[0]?.created_at) {
+        const d = new Date(latestSync[0].created_at);
+        msg += `\n\nℹ️ 資料更新時間：${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
       }
       return { type: 'text', text: msg };
     }
@@ -1479,7 +1479,7 @@ async function handleBloodTestQuery(event, linkId) {
   const firstCreatedAt = bloodTests.length > 0 && bloodTests[0].created_at
     ? (() => {
         const d = new Date(bloodTests[0].created_at);
-        return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
+        return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
       })()
     : null;
 
