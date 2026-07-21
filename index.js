@@ -1186,7 +1186,7 @@ async function handleChronicPrescriptionQuery(event, linkId) {
   const recnoPadded = recno.padStart(6, '0');
   const { data: prescription, error } = await supabase
     .from('chronic_prescriptions_date')
-    .select('*')
+    .select('*, synced_at AT TIME ZONE \'Asia/Taipei\' as synced_at_taiwan')
     .eq('code', recnoPadded)
     .single();
 
@@ -1307,10 +1307,9 @@ async function handleChronicPrescriptionQuery(event, linkId) {
 
   text += `\n\nℹ️ 以上資訊僅供參考，實際可領藥日期會因實際餘藥數量變動。`;
 
-  if (prescription.synced_at) {
-    const syncDate = new Date(prescription.synced_at);
-    const taiwanTime = new Date(syncDate.getTime() + 8 * 3600000);
-    const syncStr = `${taiwanTime.getFullYear()}/${String(taiwanTime.getMonth()+1).padStart(2,'0')}/${String(taiwanTime.getDate()).padStart(2,'0')} ${String(taiwanTime.getHours()).padStart(2,'0')}:${String(taiwanTime.getMinutes()).padStart(2,'0')}`;
+  if (prescription.synced_at_taiwan) {
+    const syncDate = new Date(prescription.synced_at_taiwan);
+    const syncStr = `${syncDate.getFullYear()}/${String(syncDate.getMonth()+1).padStart(2,'0')}/${String(syncDate.getDate()).padStart(2,'0')} ${String(syncDate.getHours()).padStart(2,'0')}:${String(syncDate.getMinutes()).padStart(2,'0')}`;
     text += `\n📅 資料更新時間：${syncStr}`;
   }
 
@@ -1353,11 +1352,20 @@ async function handleDebtQuery(event, linkId) {
   const recnoPadded = recno.padStart(6, '0');
   const { data: deposits, error } = await supabase
     .from('deposit_refund')
-    .select('*')
+    .select('*, uploaded_at AT TIME ZONE \'Asia/Taipei\' as uploaded_at_taiwan')
     .eq('chart_no', recnoPadded)
     .order('deposit_date_west', { ascending: false });
 
   const maskRecno = (r) => r && r.length >= 3 ? r[0] + '*****' + r.slice(-1) : r;
+
+  const fmtDate = (d) => d ? d.slice(0, 10).replace(/-/g, '/') : '';
+  const fmtDateTime = (d) => {
+    if (!d) return '';
+    const date = new Date(d);
+    return `${date.getFullYear()}/${String(date.getMonth()+1).padStart(2,'0')}/${String(date.getDate()).padStart(2,'0')} ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
+  };
+
+  const syncedAt = deposits && deposits.length > 0 && deposits[0].uploaded_at_taiwan;
 
   let text = `【欠單查詢】
 
@@ -1376,7 +1384,10 @@ async function handleDebtQuery(event, linkId) {
     }
   }
 
-  text += '\n⚠️ 每個月可以還押單的最晚日期為下個月的六號，之後診所已經申報完畢，無法再退費。';
+  text += '\n\n⚠️ 每個月可以還押單的最晚日期為下個月的六號，之後診所已經申報完畢，無法再退費。';
+  if (syncedAt) {
+    text += `\n\nℹ️ 資料更新時間：${fmtDateTime(syncedAt)}`;
+  }
 
   return { type: 'text', text };
 }
@@ -1414,7 +1425,7 @@ async function handleBloodTestQuery(event, linkId) {
 
   const { data: bloodTests, error } = await supabase
     .from('blood_test_dates')
-    .select('*')
+    .select('*, created_at AT TIME ZONE \'Asia/Taipei\' as created_at_taiwan')
     .eq('chart_no', recno)
     .order('do_date', { ascending: true });
 
@@ -1435,9 +1446,9 @@ async function handleBloodTestQuery(event, linkId) {
     return `${westernYear}/${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}`;
   };
 
-  const firstCreatedAt = bloodTests.length > 0 && bloodTests[0].created_at
+  const firstCreatedAt = bloodTests.length > 0 && bloodTests[0].created_at_taiwan
     ? (() => {
-        const d = new Date(bloodTests[0].created_at);
+        const d = new Date(bloodTests[0].created_at_taiwan);
         return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
       })()
     : null;

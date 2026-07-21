@@ -788,6 +788,32 @@ A 在 LINE 輸入驗證碼 → 成功
 
 ---
 
+## 📅 2026-07-21 工作進度
+
+### ✅ 三個查詢功能新增「資料更新時間」顯示
+
+#### 變更摘要
+| 功能 | 時間欄位 | 時區處理 |
+|------|----------|----------|
+| 💊 慢性病領藥查詢 | `synced_at` | SQL `AT TIME ZONE 'Asia/Taipei'` → `synced_at_taiwan` |
+| 📋 欠單查詢 | `uploaded_at` | SQL `AT TIME ZONE 'Asia/Taipei'` → `uploaded_at_taiwan` |
+| 💉 抽血日期查詢 | `created_at` | SQL `AT TIME ZONE 'Asia/Taipei'` → `created_at_taiwan` |
+
+#### 修改內容
+1. **欠單查詢**：`handleDebtQuery` 新增 `fmtDateTime` 函式與 `syncedAt` 顯示，`select` 改用 `uploaded_at AT TIME ZONE 'Asia/Taipei' as uploaded_at_taiwan`
+2. **抽血日期查詢**：`select` 改用 `created_at AT TIME ZONE 'Asia/Taipei' as created_at_taiwan`，JS 改用 `created_at_taiwan`
+3. **慢性病領藥查詢**：`select` 改用 `synced_at AT TIME ZONE 'Asia/Taipei' as synced_at_taiwan`，JS 改用 `synced_at_taiwan`
+
+#### 時區處理決策
+- Supabase 保持 UTC（官方建議）
+- 查詢時用 SQL `AT TIME ZONE 'Asia/Taipei'` 轉換
+- Zeabur server 時區已設為 Asia/Taipei（看診進度用 `toLocaleTimeString('zh-TW')`）
+
+#### 不再使用的邏輯
+- `handleChronicPrescriptionQuery` 中的 `+ 8 * 3600000` 時區補償已移除
+
+---
+
 ## 📅 歷史記錄（2026-06-13 ~ 2026-21）
 
 ### 2026-06-21
@@ -827,4 +853,4 @@ git add . && git commit -m "月度更新: YYYY-MM" && git push
   cd H:\opencode\linebot; .\generate-schedule-image.ps1
   ```
 
-**最後更新**：2026-07-20
+**最後更新**：2026-07-21
