@@ -1476,9 +1476,9 @@ async function handleBloodTestQuery(event, linkId) {
     return `${westernYear}/${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}`;
   };
 
-  const firstCreatedAt = bloodTests.length > 0 && bloodTests[0].created_at_taiwan
+  const firstCreatedAt = bloodTests.length > 0 && bloodTests[0].created_at
     ? (() => {
-        const d = new Date(bloodTests[0].created_at_taiwan);
+        const d = new Date(bloodTests[0].created_at);
         return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
       })()
     : null;
