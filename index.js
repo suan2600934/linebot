@@ -1196,7 +1196,6 @@ async function handleChronicPrescriptionQuery(event, linkId) {
         .select('synced_at')
         .order('synced_at', { ascending: false })
         .limit(1);
-        .limit(1);
       let msg = '最近三個月內查無慢性病領藥記錄。';
       if (latestSync && latestSync[0]?.synced_at) {
         const d = new Date(latestSync[0].synced_at);
