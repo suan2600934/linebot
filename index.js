@@ -1191,8 +1191,18 @@ async function handleChronicPrescriptionQuery(event, linkId) {
     .single();
 
   if (error || !prescription) {
-    return { type: 'text', text: '最近三個月內查無慢性病領藥記錄。' };
-  }
+      const { data: latestSync } = await supabase
+        .from('chronic_prescriptions_date')
+        .select('synced_at AT TIME ZONE \'Asia/Taipei\' as synced_at_taiwan')
+        .order('synced_at', { ascending: false })
+        .limit(1);
+      let msg = '最近三個月內查無慢性病領藥記錄。';
+      if (latestSync && latestSync[0]?.synced_at_taiwan) {
+        const d = new Date(latestSync[0].synced_at_taiwan);
+        msg += `\n\nℹ️ 資料更新時間：${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      }
+      return { type: 'text', text: msg };
+    }
 
   const maskRecno = (r) => r && r.length >= 3 ? r[0] + '*****' + r.slice(-1) : r;
 
@@ -1374,7 +1384,17 @@ async function handleDebtQuery(event, linkId) {
 `;
 
   if (error || !deposits || deposits.length === 0) {
-    text += '目前查無欠單或退款記錄。\n';
+    const { data: latestSync } = await supabase
+      .from('deposit_refund')
+      .select('uploaded_at AT TIME ZONE \'Asia/Taipei\' as uploaded_at_taiwan')
+      .order('uploaded_at', { ascending: false })
+      .limit(1);
+    let msg = '目前查無欠單或退款記錄。';
+    if (latestSync && latestSync[0]?.uploaded_at_taiwan) {
+      const d = new Date(latestSync[0].uploaded_at_taiwan);
+      msg += `\n\nℹ️ 資料更新時間：${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    }
+    text += msg;
   } else {
     const fmtDate = (d) => d ? d.slice(0, 10).replace(/-/g, '/') : '';
     for (const dep of deposits) {
@@ -1430,8 +1450,18 @@ async function handleBloodTestQuery(event, linkId) {
     .order('do_date', { ascending: true });
 
   if (error || !bloodTests || bloodTests.length === 0) {
-    return { type: 'text', text: '最近半年內查無抽血記錄。' };
-  }
+      const { data: latestSync } = await supabase
+        .from('blood_test_dates')
+        .select('created_at AT TIME ZONE \'Asia/Taipei\' as created_at_taiwan')
+        .order('created_at', { ascending: false })
+        .limit(1);
+      let msg = '最近半年內查無抽血記錄。';
+      if (latestSync && latestSync[0]?.created_at_taiwan) {
+        const d = new Date(latestSync[0].created_at_taiwan);
+        msg += `\n\nℹ️ 資料更新時間：${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
+      }
+      return { type: 'text', text: msg };
+    }
 
   const maskRecno = (r) => r && r.length >= 3 ? r[0] + '*****' + r.slice(-1) : r;
 
