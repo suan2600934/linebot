@@ -1319,6 +1319,7 @@ async function handleChronicPrescriptionQuery(event, linkId) {
 
   if (prescription.synced_at) {
     const syncDate = new Date(prescription.synced_at);
+    syncDate.setHours(syncDate.getHours() + 8);
     const syncStr = `${syncDate.getFullYear()}/${String(syncDate.getMonth()+1).padStart(2,'0')}/${String(syncDate.getDate()).padStart(2,'0')} ${String(syncDate.getHours()).padStart(2,'0')}:${String(syncDate.getMinutes()).padStart(2,'0')}`;
     text += `\n📅 資料更新時間：${syncStr}`;
   }
@@ -1372,10 +1373,11 @@ async function handleDebtQuery(event, linkId) {
   const fmtDateTime = (d) => {
     if (!d) return '';
     const date = new Date(d);
+    date.setHours(date.getHours() + 8);
     return `${date.getFullYear()}/${String(date.getMonth()+1).padStart(2,'0')}/${String(date.getDate()).padStart(2,'0')} ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
   };
 
-  const syncedAt = deposits && deposits.length > 0 && deposits[0].uploaded_at_taiwan;
+  const syncedAt = deposits && deposits.length > 0 && deposits[0].uploaded_at;
 
   let text = `【欠單查詢】
 
@@ -1392,6 +1394,7 @@ async function handleDebtQuery(event, linkId) {
     let msg = '目前查無欠單或退款記錄。';
     if (latestSync && latestSync[0]?.uploaded_at) {
       const d = new Date(latestSync[0].uploaded_at);
+      d.setHours(d.getHours() + 8);
       msg += `\n\nℹ️ 資料更新時間：${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
     }
     text += msg;
@@ -1456,8 +1459,9 @@ async function handleBloodTestQuery(event, linkId) {
         .order('created_at', { ascending: false })
         .limit(1);
       let msg = '最近半年內查無抽血記錄。';
-      if (latestSync && latestSync[0]?.created_at) {
+if (latestSync && latestSync[0]?.created_at) {
         const d = new Date(latestSync[0].created_at);
+        d.setHours(d.getHours() + 8);
         msg += `\n\nℹ️ 資料更新時間：${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
       }
       return { type: 'text', text: msg };
@@ -1479,6 +1483,7 @@ async function handleBloodTestQuery(event, linkId) {
   const firstCreatedAt = bloodTests.length > 0 && bloodTests[0].created_at
     ? (() => {
         const d = new Date(bloodTests[0].created_at);
+        d.setHours(d.getHours() + 8);
         return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
       })()
     : null;
