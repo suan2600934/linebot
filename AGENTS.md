@@ -792,29 +792,49 @@ A 在 LINE 輸入驗證碼 → 成功
 
 ### ✅ 三個查詢功能新增「資料更新時間」顯示
 
-#### 變更摘要
-| 功能 | 時間欄位 | 時區處理 |
-|------|----------|----------|
-| 💊 慢性病領藥查詢 | `synced_at` | SQL `AT TIME ZONE 'Asia/Taipei'` → `synced_at_taiwan` |
-| 📋 欠單查詢 | `uploaded_at` | SQL `AT TIME ZONE 'Asia/Taipei'` → `uploaded_at_taiwan` |
-| 💉 抽血日期查詢 | `created_at` | SQL `AT TIME ZONE 'Asia/Taipei'` → `created_at_taiwan` |
+#### 時區處理（最終方案）
+- Supabase TIMESTAMPTZ 欄位：UTC 時間，JavaScript `new Date()` 解析後，視情況加 +8 小時
+- Zeabur server 時區已是 Asia/Taipei
+- 由於不同資料的上傳 script 行為不一致，部分時間欄位存的是 UTC，部分已經是 Taiwan 時間，所以每個查詢的 +8 小時處理不同
 
-#### 修改內容
-1. **欠單查詢**：`handleDebtQuery` 新增 `fmtDateTime` 函式與 `syncedAt` 顯示，`select` 改用 `uploaded_at AT TIME ZONE 'Asia/Taipei' as uploaded_at_taiwan`
-2. **抽血日期查詢**：`select` 改用 `created_at AT TIME ZONE 'Asia/Taipei' as created_at_taiwan`，JS 改用 `created_at_taiwan`
-3. **慢性病領藥查詢**：`select` 改用 `synced_at AT TIME ZONE 'Asia/Taipei' as synced_at_taiwan`，JS 改用 `synced_at_taiwan`
+#### 各函式時區處理
+| 函式 | 情境 | 時間欄位 | +8 小時 |
+|------|------|----------|---------|
+| 慢病領藥查詢 | 有資料 | `synced_at` | ❌ 無 |
+| 慢病領藥查詢 | 無資料（latestSync） | `synced_at` | ✅ 有 |
+| 欠單查詢 | 有資料 | `uploaded_at`（fmtDateTime） | ✅ 有 |
+| 欠單查詢 | 無資料（latestSync） | `uploaded_at` | ❌ 無 |
+| 抽血日期查詢 | 有資料 | `created_at` | ✅ 有 |
+| 抽血日期查詢 | 無資料（latestSync） | `created_at` | ✅ 有 |
 
-#### 時區處理決策
-- Supabase 保持 UTC（官方建議）
-- 查詢時用 SQL `AT TIME ZONE 'Asia/Taipei'` 轉換
-- Zeabur server 時區已設為 Asia/Taipei（看診進度用 `toLocaleTimeString('zh-TW')`）
+#### 顯示格式
+- 有資料且確實有病歷記錄：顯示在回覆結尾（ℹ️ 或 📅 標記）
+- 無資料（但表格有其他資料）：在「查無」訊息後附加資料更新時間
 
-#### 不再使用的邏輯
-- `handleChronicPrescriptionQuery` 中的 `+ 8 * 3600000` 時區補償已移除
+#### 疑難排除記錄
+- 家裡和診所的綁定程式可能墊 recno 方式不同（家中新綁定墊到 6 碼，診所不墊），導致 chart_no 對不上
+- 不同上傳 script 寫入 TIMESTAMPTZ 時行為不一致（有些已是 Taiwan 時間，有些是 UTC），所以每個函式需個別處理
+
+#### Git Commit 記錄
+| Commit | 說明 |
+|--------|------|
+| `14f2ce3` | feat: 三個查詢功能新增資料更新時間顯示 |
+| `2393693` | fix: 查無資料時也顯示資料更新時間 |
+| `e55d665` | fix: 移除重複的 .limit(1) 行（SyntaxError修復） |
+| `6f4f9bd` | fix: blood_test_query firstCreatedAt 使用 created_at |
+| `5159da9` | fix: 抽血查詢更新時間也顯示時分 |
+| `5d3f261` | fix: 所有時間戳加 +8 小時修正 UTC 問題 |
+| `8b27d30` | fix: 移除慢病有資料和欠單無資料的+8小時修正 |
+| `19a25ad` | fix: 移除欠單無資料的+8小時 |
 
 ---
 
 ## 📅 歷史記錄（2026-06-13 ~ 2026-21）
+
+### 2026-07-21
+- 三個查詢功能新增「資料更新時間」顯示
+- 修復 SyntaxError（重複 .limit(1)）
+- 時區處理複雜化：不同表格的時間欄位格式不一致，需個別處理
 
 ### 2026-06-21
 - GitHub 倉庫建立
@@ -853,4 +873,4 @@ git add . && git commit -m "月度更新: YYYY-MM" && git push
   cd H:\opencode\linebot; .\generate-schedule-image.ps1
   ```
 
-**最後更新**：2026-07-21
+**最後更新**：2026-07-21（晚間）
