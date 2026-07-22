@@ -1393,7 +1393,6 @@ async function handleDebtQuery(event, linkId) {
     let msg = '目前查無欠單或退款記錄。';
     if (latestSync && latestSync[0]?.uploaded_at) {
       const d = new Date(latestSync[0].uploaded_at);
-      d.setHours(d.getHours() + 8);
       msg += `\n\nℹ️ 資料更新時間：${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
     }
     text += msg;
