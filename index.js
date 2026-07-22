@@ -1319,7 +1319,6 @@ async function handleChronicPrescriptionQuery(event, linkId) {
 
   if (prescription.synced_at) {
     const syncDate = new Date(prescription.synced_at);
-    syncDate.setHours(syncDate.getHours() + 8);
     const syncStr = `${syncDate.getFullYear()}/${String(syncDate.getMonth()+1).padStart(2,'0')}/${String(syncDate.getDate()).padStart(2,'0')} ${String(syncDate.getHours()).padStart(2,'0')}:${String(syncDate.getMinutes()).padStart(2,'0')}`;
     text += `\n📅 資料更新時間：${syncStr}`;
   }
