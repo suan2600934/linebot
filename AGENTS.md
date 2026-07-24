@@ -873,4 +873,71 @@ git add . && git commit -m "月度更新: YYYY-MM" && git push
   cd H:\opencode\linebot; .\generate-schedule-image.ps1
   ```
 
-**最後更新**：2026-07-21（晚間）
+**最後更新**：2026-07-24
+**狀態**：Supabase 備份系統建立完成
+
+---
+
+## 📅 2026-07-24 工作進度
+
+### ✅ Supabase 資料庫備份系統
+
+#### 問題排查歷程
+- **Direct Connection 失敗**：`db.kbpyxboleoefwvdnjcod.supabase.co:5432` 只有 AAAA（IPv6）記錄
+- **家用網路不支援 IPv6**：`Network is unreachable (10051)`
+- **Pooler 發現**：直接用 `aws-1-ap-southeast-1.pooler.supabase.com:5432` 可成功連線（IPv4）
+- **關鍵：Pooler 用戶名格式不同**：`postgres.kbpyxboleoefwvdnjcod`（不是單純 `postgres`）
+
+#### 連線參數（Pooler）
+```
+Host: aws-1-ap-southeast-1.pooler.supabase.com
+Port: 5432
+User: postgres.kbpyxboleoefwvdnjcod
+Database: postgres
+SSL: require
+```
+
+#### 環境變數新增（.env）
+```env
+# Supabase Database (pg_dump 備份用)
+DB_HOST=db.kbpyxboleoefwvdnjcod.supabase.co
+DB_USER=postgres
+PGPASSWORD=你的密碼
+DB_NAME=postgres
+
+# Supabase Management API (備份用)
+SUPABASE_MANAGEMENT_TOKEN=你的Token（不要 commit 到 Git）
+```
+
+#### 備份腳本
+- **位置**：`H:\opencode\linebot\backup.js`（從 `H:\supabase\backup\backup.js` 複製過來）
+- **備份資料夾**：`H:\supabase\backup\`
+- **Log 檔案**：`H:\supabase\backup\backup.log`
+- **保留期限**：30 天（自動清理舊檔）
+
+#### 執行方式
+```bash
+node H:/opencode/linebot/backup.js
+```
+
+#### 還原指令
+```bash
+& "C:\Program Files\PostgreSQL\17\bin\pg_restore.exe" -Fc -d "postgresql://postgres.kbpyxboleoefwvdnjcod:[密碼]@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres?sslmode=require" H:/supabase/backup/supabase_backup_20260724_081925.dump
+```
+
+**注意**：還原會覆蓋現有資料，請先確認備份檔沒有問題。
+
+#### 備份成功驗證
+- Supabase 資料庫大小：**12 MB**
+- 備份檔案：`.dump` 格式（壓縮後約 0.35 MB）
+- 功能：自動清理 30 天前舊備份、寫入 backup.log
+
+#### 結論
+- Free Plan **不包含** Management API 備份功能
+- 使用 Pooler（pg_dump）可正常備份
+- 備份目前為**手動觸發**（有大幅修改前執行）
+- 未來可輕鬆改為 Windows 工作排程自動化
+
+---
+
+**最後更新**：2026-07-24（晚間）

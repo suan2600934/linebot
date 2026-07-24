@@ -5,3 +5,4 @@ node_modules/
 dist/
 build/
 .github/
+lineid_code/bindings.db
