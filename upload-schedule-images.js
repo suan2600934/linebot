@@ -5,7 +5,7 @@ const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
-const files = ['schedule-week1.png', 'schedule-week2.png', 'schedule-week3.png', 'schedule-week4.png', 'schedule-week5.png', 'schedule-week6.png'];
+const files = ['schedule-week1.png', 'schedule-week2.png', 'schedule-week3.png', 'schedule-week4.png', 'schedule-week5.png', 'schedule-week6.png', 'schedule-full-month.jpg'];
 
 async function uploadAll() {
   for (const file of files) {

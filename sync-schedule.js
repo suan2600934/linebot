@@ -73,7 +73,7 @@ async function syncSchedule() {
 
   const cnToNum = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6 };
 
-  await supabase.from('schedules').delete().match({ year: 2026, month: 7 });
+  await supabase.from('schedules').delete().match({ year, month });
 
   for (const w of weeks) {
     const num = cnToNum[w.label.replace('第', '').replace('週', '')];
