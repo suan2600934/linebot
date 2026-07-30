@@ -85,4 +85,12 @@ git add . && git commit -m "月度更新: YYYY-MM" && git push
 
 ---
 
+## 系統設計說明
+
+- `index.js` 取得當前年月 (`new Date()`) 再以 `year`、`month`、`week_number` 從 `schedules` 取得本週文字。只會返回**本月**的資料，舊月份（如 7 月）不會被誤抓。
+- `sync-schedule.js` 只在執行時根據 `knowledge-base.md` 中解析出的 `year`、`month` 刪除同月份舊資料 (`delete().match({ year, month })`) 並插入新資料。因而不會刪除其他月份的資料，舊月資料會被保留在 Supabase 中。
+- 因此 **不必等到每月最後一天才能上傳下個月的班表**。只要在任何時間貼上下個月的 Tab 文字、產生週圖、執行同步與上傳即可。`getThisWeekSchedule`、`getSchedule` 仍會根據當前時間自動顯示正確月份的班表。
+
+---
+
 **最後更新**：2026-07-20
