@@ -8,6 +8,7 @@
     "@line/bot-sdk": "^9.9.0",
     "@supabase/supabase-js": "^2.110.7",
     "axios": "^1.18.1",
+    "canvas": "^3.2.3",
     "cors": "^2.8.6",
     "dotenv": "^16.6.1",
     "express": "^4.22.2",
