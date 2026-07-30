@@ -23,9 +23,9 @@ cd H:\opencode\linebot
 node generate-weekly-schedules.js
 ```
 - 讀取 knowledge-base.md 中的 Tab 格式班表
-- 自動產生 schedule-week1.png ~ schedule-week6.png
-- 尺寸：1050 x 360 pixels
-- 圖檔會預先產生，於當月最後一天再上傳到 Supabase Storage（使用 `upload-schedule-images.js`）
+- 自動產生 `schedule-week1.png` ~ `schedule-week6.png`
+- 圖片尺寸：1050 x 360 pixels
+- 產生完畢後，下一步會將 **所有週圖** 與 **全月圖** 上傳至 Supabase Storage（使用 `upload-schedule-images.js`）
 
 ### 6. 同步知識庫到 Supabase
 ```bash
@@ -68,7 +68,8 @@ git add . && git commit -m "月度更新: YYYY-MM" && git push
 
 ### 每次月底（當我收到以下兩項，即自動執行後續所有上傳）
 1. **「這是 OO 月班表」** → 貼上 Excel 複製的 Tab 格式文字內容
-2. **「圖檔已產生」** → 確認 `schedule-week*.png` + `schedule-full-month.jpg` 已在專案目錄
+2. **「產生週圖」** → 執行 `node generate-weekly-schedules.js` 產生 `schedule-week*.png`
+3. **「圖檔已產生」** → 確認 `schedule-week*.png` + `schedule-full-month.jpg` 已在專案目錄
 
 ### 我收到後自動執行
 ```bash
