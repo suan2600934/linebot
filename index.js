@@ -536,7 +536,7 @@ async function getFullMonthSchedule() {
   const now = new Date();
   const rocYear = now.getFullYear() - 1911;
   const month = now.getMonth() + 1;
-  const imageUrl = STORAGE_URL + '/schedule-full-month.jpg';
+  const imageUrl = STORAGE_URL + `/schedule-full-${now.getFullYear()}-${String(month).padStart(2,'0')}.jpg`;
   return [
     {
       type: 'text',

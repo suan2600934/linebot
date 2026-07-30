@@ -289,7 +289,7 @@ async function main() {
     const week = scheduleData.weeks[i];
     const canvas = drawWeekSchedule(week, scheduleData.year, scheduleData.month, i);
 
-    const outputPath = path.join(__dirname, `schedule-week${i + 1}.png`);
+    const outputPath = path.join(__dirname, `schedule-${scheduleData.year}-${String(scheduleData.month).padStart(2,'0')}-week${i + 1}.png`);
     const buffer = canvas.toBuffer('image/png');
 
     fs.writeFileSync(outputPath, buffer);

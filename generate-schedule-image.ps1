@@ -7,7 +7,7 @@ param(
     [string]$ExcelPath = "",
 
     [Parameter(Mandatory=$false)]
-    [string]$OutputPath = "H:\opencode\linebot\schedule-full-month.jpg"
+    [string]$OutputPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -276,6 +276,10 @@ if (-not (Test-Path $kbPath)) {
     } else {
         $yearNum = $scheduleYear
         $monthNum = "?"
+        # 若未指定輸出檔案名稱，依月份產生唯一檔名
+        if ([string]::IsNullOrWhiteSpace($OutputPath)) {
+            $OutputPath = "H:\opencode\linebot\schedule-full-${yearNum}-${monthNum}.jpg"
+        }
     }
     
     # 產生 Markdown 格式的班表
