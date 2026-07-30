@@ -73,13 +73,16 @@ async function syncSchedule() {
 
   const cnToNum = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6 };
 
+  const year = 2026;
+  const month = 8;
+
   await supabase.from('schedules').delete().match({ year, month });
 
   for (const w of weeks) {
     const num = cnToNum[w.label.replace('第', '').replace('週', '')];
     const { error } = await supabase
       .from('schedules')
-      .insert({ year: 2026, month: 7, week_number: num, week_label: w.label, week_content: w.content });
+      .insert({ year, month, week_number: num, week_label: w.label, week_content: w.content });
 
     if (error) {
       console.error(`${w.label} 寫入失敗:`, error.message);
