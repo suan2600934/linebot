@@ -17,7 +17,7 @@ async function syncSchedule() {
     const line = lines[i].replace(/\r/g, '');
     const parts = line.split('\t');
 
-    if (parts[0]?.trim().match(/^第[一二三四五]週$/)) {
+    if (parts[0]?.trim().match(/^第[一二三四五六]週$/)) {
       const weekLabel = parts[0].trim();
       const datesLine = lines[i + 1]?.replace(/\r/g, '') || '';
       const morningLine = lines[i + 2]?.replace(/\r/g, '') || '';
@@ -71,7 +71,7 @@ async function syncSchedule() {
 
   console.log('找到', weeks.length, '週');
 
-  const cnToNum = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5 };
+  const cnToNum = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6 };
 
   await supabase.from('schedules').delete().match({ year: 2026, month: 7 });
 
