@@ -508,7 +508,8 @@ async function getThisWeekSchedule() {
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
   const weekNum = getWeekNumber(now);
-  const imageUrl = STORAGE_URL + `/schedule-week${weekNum}.png`;
+   const imageUrl = `${STORAGE_URL}/schedule-${now.getFullYear()}-${String(month).padStart(2,'0')}-week${weekNum}.png`;
+
 
   const { data, error } = await supabase
     .from('schedules')
