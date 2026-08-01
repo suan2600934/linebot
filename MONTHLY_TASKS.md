@@ -1,96 +1,81 @@
-# 賜安診所 LINE Bot 月底維護清單
+# 賜安診所 LINE Bot 每月班表更新流程
 
-## 每月月底工作
+## 架構說明
 
-### 1. 取得新月份班表
-從診所取得下個月的 Excel 班表，**直接複製 Excel 文字內容貼給我**（即 Tab 文字格式）
+- **班表資料來源**：由你以 **Tab 格式** 提供（從 Excel 直接複製），貼到 `schedule-input.txt`。
+- **知識庫附加**：你貼好後告訴我「貼好了」，我執行 `node append-schedule.js` 自動附加到 `knowledge-base.md`。
+- **月份版檔名**：`schedule-full-YYYY-MM.jpg`、`schedule-YYYY-MM-weekN.png`（不再使用舊別名）。
+- **同步工具**：`sync-schedule.js` 讀取 `knowledge-base.md` 的 Tab 格式寫入 `schedules` 表。
 
-### 2. 更新 knowledge-base.md
-將新月份班表寫入 `knowledge-base.md` 的班表區塊（Tab 格式）
+---
 
-### 3. 執行 PowerShell 生成完整月份班表圖檔
+## 每次月底工作
+
+### 1. 貼上新月份班表
+
+開啟 `schedule-input.txt`，從 Excel 複製 Tab 格式班表貼入，存檔後告訴我「貼好了」。
+
+我執行 `node append-schedule.js`，系統會：
+- 從內容偵測月份（如 `115年8月`）
+- 更新 `knowledge-base.md` 的「最後更新」日期
+- 自動加上 `## 115年8月門診班表` 標題並附加到最底部
+
+### 2. 產生全月圖
+
+請你在自己的 **PowerShell 7** 終端機執行：
+
 ```powershell
 cd H:\opencode\linebot
 .\generate-schedule-image.ps1
 ```
-- 圖檔 `schedule-full-month.jpg` 會預先產生，於當月最後一天再上傳到 Supabase Storage（使用 `upload-schedule-images.js`）
 
-### 4. 檢查並編輯 knowledge-base.md
-將班表區塊更新為 Tab 格式（非 markdown 表格）
+輸出：`schedule-full-YYYY-MM.jpg`
 
-### 5. 產生每週班表圖（根據 knowledge-base.md）
+### 3. 產生週圖
+
 ```bash
 node generate-weekly-schedules.js
 ```
-- 讀取 knowledge-base.md 中的 Tab 格式班表
-- 自動產生 `schedule-week1.png` ~ `schedule-week6.png`
-- 圖片尺寸：1050 x 360 pixels
-- 產生完畢後，下一步會將 **所有週圖** 與 **全月圖** 上傳至 Supabase Storage（使用 `upload-schedule-images.js`）
 
-### 6. 同步知識庫到 Supabase
+輸出：`schedule-YYYY-MM-week1.png` ~ `schedule-YYYY-MM-week6.png`
+
+### 4. 上傳圖檔至 Supabase
+
 ```bash
-node sync-knowledge-base.js
+node upload-schedule-images.js
 ```
-- 同步 `knowledge-base.md` 到 `knowledge_base` 表（供 AI 使用）
 
-### 7. 同步班表到 Supabase
+### 5. 同步排程資料至資料庫
+
 ```bash
 node sync-schedule.js
 ```
-- 同步 Tab 格式班表到 `schedules` 表
-
-### 8. 更新 GitHub
-```bash
-cd H:\opencode\linebot
-git add . && git commit -m "月度更新: YYYY-MM" && git push
-```
-
-### 9. 確認 LINE Bot 正常
-- 傳「門診表」測試是否顯示新月份
-- 傳「第四週」測試是否正確
 
 ---
 
-## 每日可檢查的事項
-- [ ] Zeabur 部署正常、Logs 無錯誤
-- [ ] LINE Rich Menu 按鈕正常運作
+## 中文注意事項
 
-## 臨時需要告知我的事項
-- 更換 LINE Access Token
-- 更新 Rich Menu 圖片
-- 新增/修改醫師資料
-- 修改門診時間或收費
-- 更換 AI API Key
+- `schedule-input.txt`、`knowledge-base.md` 一律使用 **UTF-8 無 BOM**。
+- `append-schedule.js` 讀寫均为 UTF-8，直接由我執行，無需你在終端機操作。
+- 只有 `generate-schedule-image.ps1` 需要在你的 **PowerShell 7** 終端機執行（因為它是互動式腳本）。
 
 ---
 
-## 你告訴我的口頭指令
+## 舊別名處理
 
-### 每次月底（當我收到以下兩項，即自動執行後續所有上傳）
-1. **「這是 OO 月班表」** → 貼上 Excel 複製的 Tab 格式文字內容
-2. **「產生週圖」** → 執行 `node generate-weekly-schedules.js` 產生 `schedule-week*.png`
-3. **「圖檔已產生」** → 確認 `schedule-week*.png` + `schedule-full-month.jpg` 已在專案目錄
-
-### 我收到後自動執行
-```bash
-node sync-knowledge-base.js      # 同步 knowledge-base.md 到 knowledge_base 表
-node sync-schedule.js            # 同步 Tab 班表到 schedules 表
-node upload-schedule-images.js  # 上傳 schedule-week*.png + schedule-full-month.jpg 到 Supabase Storage
-```
-
-### GitHub 更新（我執行）
-```bash
-git add . && git commit -m "月度更新: YYYY-MM" && git push
-```
+- `schedule-full-month.jpg`、`schedule-weekN.png` 等舊別名已**不產生**。
+- `index.js` 已改為只使用月份版檔名。
+- Supabase Storage 中殘存的舊別名檔案可保留（不影響運作），有空再一次性清理。
 
 ---
 
-## 系統設計說明
+## 其他事項
 
-- `index.js` 取得當前年月 (`new Date()`) 再以 `year`、`month`、`week_number` 從 `schedules` 取得本週文字。只會返回**本月**的資料，舊月份（如 7 月）不會被誤抓。
-- `sync-schedule.js` 只在執行時根據 `knowledge-base.md` 中解析出的 `year`、`month` 刪除同月份舊資料 (`delete().match({ year, month })`) 並插入新資料。因而不會刪除其他月份的資料，舊月資料會被保留在 Supabase 中。
-- 因此 **不必等到每月最後一天才能上傳下個月的班表**。只要在任何時間貼上下個月的 Tab 文字、產生週圖、執行同步與上傳即可。`getThisWeekSchedule`、`getSchedule` 仍會根據當前時間自動顯示正確月份的班表。
+- **GitHub 備份**：完成後執行 `git add . && git commit -m "月度更新: YYYY-MM" && git push`
+- **LINE Bot 驗證**：傳「門診表」測試是否顯示新月份圖片
+- **Supabase 檢查**：確認 `schedules` 表只有本月 5 筆資料
+- **知識庫同步**：`node sync-knowledge-base.js` 同步 `knowledge-base.md` 到 `knowledge_base` 表（AI 使用）
 
 ---
 
-**最後更新**：2026-07-20
+**最後更新**：2026-08-01

@@ -873,8 +873,23 @@ git add . && git commit -m "月度更新: YYYY-MM" && git push
   cd H:\opencode\linebot; .\generate-schedule-image.ps1
   ```
 
-**最後更新**：2026-07-24
-**狀態**：Supabase 備份系統建立完成
+### 2026-07-30
+- 八月班表更新：`schedule-full-2026-08.jpg`、`schedule-2026-08-week1~6.png` 上傳至 Supabase
+- 七月班表補傳：`schedule-2026-07-week1~5.png`、`schedule-full-2026-07.jpg`
+- 修正 Supabase `schedules` 表 7 月內容錯誤
+- `index.js` 週班表改為月份專屬檔名 `schedule-YYYY-MM-weekN.png`
+- `generate-weekly-schedules.js` 輸出從民國年改為西元年
+- `knowledge-base.md` 加入 7 月 Tab 格式班表
+
+### 2026-07-31
+- 將 `schedule-week*.png` 複製為 `schedule-2026-08-week*.png` 上傳至 Supabase
+- 將 `schedule-full-month.jpg` 複製為 `schedule-full-2026-08.jpg` 上傳
+- 重寫 `generate-schedule-image.js`（Node 版），從 knowledge-base.md 讀取 Tab 格式繪製整月圖
+- 輸出格式：`schedule-full-YYYY-MM.jpg`
+- 七月/八月雙月份班表系統完整修復完成
+
+**最後更新**：2026-07-31
+**狀態**：7/8月雙月份班表系統完整修復、generate-schedule-image.js 重寫完成
 
 ---
 
@@ -940,4 +955,69 @@ node H:/opencode/linebot/backup.js
 
 ---
 
-**最後更新**：2026-07-24（晚間）
+## 📅 2026-07-31 工作進度
+
+### ✅ 班表更新流程自動化（已完成）
+
+#### 目標
+把每月手動步驟（產全月圖→產週圖→上傳→同步）串成一個可重複執行的流程。
+
+#### 2026-08-01 更新：改用非互動式 `append-schedule.js` 取代互動式 `.ps1`
+
+**變更內容**：
+
+| 檔案 | 變更 |
+|------|------|
+| `schedule-input.txt` | **新增**：空白暫存檔，使用者從 Excel 複製 Tab 格式班表貼入 |
+| `append-schedule.js` | **新增**：非互動式 Node.js 腳本，讀取 `schedule-input.txt` → 附加到 `knowledge-base.md` 並更新「最後更新」日期 |
+| `append-schedule-section.ps1` | 不再需要（互動式，有中文亂碼風險），保留不動 |
+| `run-monthly-schedule.ps1` | 保留（其他步驟仍透過 PowerShell 7 執行） |
+
+#### 新的班表附加流程
+
+```
+1. 開啟 schedule-input.txt
+2. 從 Excel 複製 Tab 格式班表，貼入 schedule-input.txt（第一行通常為「賜安診所115年8月班表」）
+3. 存檔後告訴我「貼好了」
+4. 我執行：node append-schedule.js
+5. 系統自動：
+   - 讀取 schedule-input.txt
+   - 從內容偵測月份（如 115年8月）
+   - 更新 knowledge-base.md 的「最後更新」日期
+   - 將 Tab 格式班表附加到 knowledge-base.md 最底部（插入在「---」分隔線之後）
+   - 自動加上 ## 115年8月門診班表 標題
+6. 清空 schedule-input.txt 備用
+```
+
+#### schedule-input.txt 格式說明
+
+直接從 Excel 班表複製貼上即可，格式為 Tab 分隔：
+
+```
+賜安診所115年8月班表
+第一週 星期六 星期日
+    8月1日 8月2日
+早診8:00~12:00 石 周
+午診3:00~6:00 周 石
+晚診 6:30~8:30 周 石
+...
+```
+
+**append-schedule.js 會自動處理：**
+- 偵測月份（從第一行的 `115年8月` 或內容中的 `8月1日`）
+- 去除班別行中的時間文字（`早診8:00~12:00` → `早診`）
+- 保留空 Tab 欄位（第一週只有部分日期時，後續欄位留空不截斷）
+- 加上 `## 115年8月門診班表` 標題
+
+#### PowerShell 7 互動視窗規則（其他步驟仍需要）
+
+| 步驟 | 腳本 | 執行方式 |
+|------|------|----------|
+| 產生全月圖 | `generate-schedule-image.ps1` | PowerShell 7 視窗 |
+| 產生週圖 | `generate-weekly-schedules.js` | 非互動，可直接跑 |
+| 上傳圖檔 | `upload-schedule-images.js` | 非互動，可直接跑 |
+| 同步排程 | `sync-schedule.js` | 非互動，可直接跑 |
+
+---
+
+**最後更新**：2026-08-01（班表附加改為非互動式，Tab 格式自動處理）
