@@ -71,12 +71,25 @@ async function syncSchedule() {
 
   console.log('找到', weeks.length, '週');
 
-  const cnToNum = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6 };
+const cnToNum = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6 };
 
-  const year = 2026;
-  const month = 8;
+const headerRegex = /^## (\d+)年(\d+)月門診班表$/;
+let year, month;
+for (let j = lines.length - 1; j >= 0; j--) {
+  const m = lines[j].match(headerRegex);
+  if (m) {
+    year = parseInt(m[1]) + 1911;
+    month = parseInt(m[2]);
+    break;
+  }
+}
+if (!year || !month) {
+  console.error('[ERROR] 無法從 knowledge-base.md 偵測班表年月');
+  process.exit(1);
+}
+console.log(`偵測到班表：${year}年${String(month).padStart(2, '0')}月`);
 
-  await supabase.from('schedules').delete().match({ year, month });
+await supabase.from('schedules').delete().match({ year, month });
 
   for (const w of weeks) {
     const num = cnToNum[w.label.replace('第', '').replace('週', '')];
