@@ -25,16 +25,7 @@ for (let i = 1; i <= 6; i++) {
 }
 monthFiles.push(`schedule-full-${westYear}-${month}.jpg`);
 
-// 為了相容既有程式（仍使用 schedule-weekX.png、schedule-full-month.jpg），
-// 也同時上傳一組通用名稱的檔案（會指向同一張檔案）
-const genericFiles = [];
-for (let i = 1; i <= 6; i++) {
-  genericFiles.push(`schedule-week${i}.png`);
-}
-genericFiles.push('schedule-full-month.jpg');
-
-// 合併兩組檔案清單（若同名檔案已存在，會以相同內容上傳，Supabase 會以 upsert 方式覆寫）
-const files = [...new Set([...monthFiles, ...genericFiles])];
+const files = monthFiles;
 
 async function uploadAll() {
   for (const file of files) {
