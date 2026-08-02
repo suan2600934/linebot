@@ -42,15 +42,15 @@ if (-not (Ask-Continue "步驟 1 完成（班表已附加到 knowledge-base.md�
 }
 
 Write-Host ""
-Write-Host "[步驟 2/5] 產生全月圖..." -ForegroundColor Cyan
+Write-Host "[步驟 2/5] 產生全月圖..." -ForegroundColor Cy an
+Write-Host "正在開啟 PowerShell 7 視窗執行 generate-schedule-image.ps1..." -ForegroundColor Yellow
+Write-Host "請在新的視窗中等待腳本執行完畢，關閉後回到這裡繼續。" -ForegroundColor Gray
 Write-Host ""
-Write-Host "請打開 generate-schedule-image.ps1 或手動執行 PowerShell 7：" -ForegroundColor Yellow
-Write-Host "  cd H:\opencode\linebot" -ForegroundColor Gray
-Write-Host "  .\generate-schedule-image.ps1" -ForegroundColor Gray
+
+Start-Process "pwsh" -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','.\generate-schedule-image.ps1' -Wait -NoNewWindow
+
 Write-Host ""
-Write-Host "完成後請確認 schedule-full-YYYY-MM.jpg 已產生。" -ForegroundColor Gray
-Write-Host ""
-if (-not (Ask-Continue "全月圖已產生，是否繼續到步驟 3？")) {
+if (-not (Ask-Continue "步驟 2 完成（全月圖已產生），是否繼續到步驟 3？")) {
   Write-Host "已中止流程。" -ForegroundColor Yellow
   exit 1
 }
