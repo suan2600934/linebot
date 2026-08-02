@@ -5,17 +5,25 @@ const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
-// 取得當前年月，用於組合檔名（與 generate-schedule-image / generate-weekly-schedules 保持一致）
-const now = new Date();
-const currentYear = now.getFullYear();
-const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
+// 從 knowledge-base.md 的最後一個班表標題偵測年月（與 sync-schedule.js 一致）
+const kbContent = fs.readFileSync('./knowledge-base.md', 'utf8');
+const headerMatch = kbContent.match(/^## (\d+)年(\d+)月門診班表/g) || [];
+const lastHeader = headerMatch[headerMatch.length - 1];
+if (!lastHeader) {
+  console.error('[ERROR] knowledge-base.md 中找不到班表標題');
+  process.exit(1);
+}
+const ym = lastHeader.match(/^## (\d+)年(\d+)月門診班表$/);
+const westYear = parseInt(ym[1]) + 1911;
+const month = ym[2].padStart(2, '0');
+console.log(`偵測到班表月份：${westYear}-${month}`);
 
 // 組成月份專屬的檔名 (最多 6 週)
 const monthFiles = [];
 for (let i = 1; i <= 6; i++) {
-  monthFiles.push(`schedule-${currentYear}-${currentMonth}-week${i}.png`);
+  monthFiles.push(`schedule-${westYear}-${month}-week${i}.png`);
 }
-monthFiles.push(`schedule-full-${currentYear}-${currentMonth}.jpg`);
+monthFiles.push(`schedule-full-${westYear}-${month}.jpg`);
 
 // 為了相容既有程式（仍使用 schedule-weekX.png、schedule-full-month.jpg），
 // 也同時上傳一組通用名稱的檔案（會指向同一張檔案）
