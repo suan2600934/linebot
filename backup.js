@@ -3,7 +3,7 @@ const path = require('path');
 const { execSync } = require('child_process');
 require('dotenv').config({ path: 'H:/opencode/linebot/.env' });
 
-const PGPATH = 'C:/Program Files/PostgreSQL/17/bin/pg_dump.exe';
+const PGPATH = process.env.PGPATH || 'C:/Program Files/PostgreSQL/17/bin/pg_dump.exe';
 const BACKUP_DIR = 'H:/supabase/backup';
 const LOG_FILE = path.join(BACKUP_DIR, 'backup.log');
 const POOL_HOST = 'aws-1-ap-southeast-1.pooler.supabase.com';

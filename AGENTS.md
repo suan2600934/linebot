@@ -853,43 +853,23 @@ A 在 LINE 輸入驗證碼 → 成功
 
 ---
 
-## 每月月底速etto流程（口頭指令版）
+## 每月月底流程
 
-### 你只需要說
-1. **「這是 OO 月班表」** → 貼上 Excel 複製的 Tab 文字內容
-2. **「圖檔已產生」** → 確認 schedule-week*.png + schedule-full-month.jpg 已在專案目錄
+執行 `run-monthly-schedule.ps1`（在你自己的 PowerShell 7 終端機），5 步驟逐步確認：
 
-### 我收到後自動執行
-```bash
-node sync-knowledge-base.js      # 同步 knowledge-base.md 到 knowledge_base 表
-node sync-schedule.js            # 同步 Tab 班表到 schedules 表
-node upload-schedule-images.js  # 上傳 schedule-week*.png + schedule-full-month.jpg 到 Supabase Storage
-git add . && git commit -m "月度更新: YYYY-MM" && git push
-```
+| 步驟 | 動作 | 說明 |
+|------|------|------|
+| 1 | `append-schedule.js` | 從 `schedule-input.txt` 讀取 Tab 班表，附加到 `knowledge-base.md` |
+| 2 | `generate-schedule-image.ps1` | 從 Excel 產生全月圖 `schedule-full-YYYY-MM.jpg`（自動彈出視窗） |
+| 3 | `generate-weekly-schedules.js` | 產生週圖 `schedule-YYYY-MM-week1~6.png` |
+| 4 | `upload-schedule-images.js` | 上傳月份專屬圖檔到 Supabase Storage |
+| 5 | `sync-schedule.js` | 同步班表到 Supabase `schedules` 表（自動偵測年月） |
 
-### 前置需知
-- 你告訴我「圖檔已產生」前，請先執行：
-  ```powershell
-  cd H:\opencode\linebot; .\generate-schedule-image.ps1
-  ```
+### 前置準備
+- 步驟 1 前：先把 Tab 格式班表貼入 `schedule-input.txt`
+- 步驟 2：`generate-schedule-image.ps1` 會自動彈出新視窗，無需手動操作
 
-### 2026-07-30
-- 八月班表更新：`schedule-full-2026-08.jpg`、`schedule-2026-08-week1~6.png` 上傳至 Supabase
-- 七月班表補傳：`schedule-2026-07-week1~5.png`、`schedule-full-2026-07.jpg`
-- 修正 Supabase `schedules` 表 7 月內容錯誤
-- `index.js` 週班表改為月份專屬檔名 `schedule-YYYY-MM-weekN.png`
-- `generate-weekly-schedules.js` 輸出從民國年改為西元年
-- `knowledge-base.md` 加入 7 月 Tab 格式班表
-
-### 2026-07-31
-- 將 `schedule-week*.png` 複製為 `schedule-2026-08-week*.png` 上傳至 Supabase
-- 將 `schedule-full-month.jpg` 複製為 `schedule-full-2026-08.jpg` 上傳
-- 重寫 `generate-schedule-image.js`（Node 版），從 knowledge-base.md 讀取 Tab 格式繪製整月圖
-- 輸出格式：`schedule-full-YYYY-MM.jpg`
-- 七月/八月雙月份班表系統完整修復完成
-
-**最後更新**：2026-07-31
-**狀態**：7/8月雙月份班表系統完整修復、generate-schedule-image.js 重寫完成
+**最後更新**：2026-08-01
 
 ---
 
@@ -1021,3 +1001,45 @@ node H:/opencode/linebot/backup.js
 ---
 
 **最後更新**：2026-08-01（班表附加改為非互動式，Tab 格式自動處理）
+
+---
+
+## 📅 2026-08-12 工作進度
+### ✅ Supabase RLS 安全修補（全量表啟用 Row-Level Security）
+
+#### 問題
+Supabase 發送安全警報：`rls_disabled_in_public` — 資料庫所有 Table 未啟用 RLS，任何人只要有 project URL 就能讀寫全部資料。
+
+#### 修復內容
+建立 `database/rls-policies.sql`，為全部 **14 個 Table** 個別設定 RLS：
+
+| Table | RLS 啟用 | 說明 |
+|------|---------|------|
+| blood_test_dates | ✅ | 抽血日期（含 chart_no，敏感） |
+| chronic_prescriptions_date | ✅ | 慢性病領藥記錄（含病歷號） |
+| clinics | ✅ | 診所基本資料（公開可讀） |
+| deposit_refund | ✅ | 預約/退費（含 chart_no） |
+| doctors | ✅ | 醫師資料（公開可讀） |
+| knowledge_base | ✅ | AI 知識庫 |
+| line_user_links | ✅ | LINE 綁定表（加密個資） |
+| line_user_links_history | ✅ | 綁定歷史 |
+| pharmacies | ✅ | 藥局資料（公開可讀） |
+| queue_status | ✅ | 看診進度（anon 可 INSERT） |
+| schedules | ✅ | 班表（公開可讀） |
+| services | ✅ | 服務項目（公開可讀） |
+| verification_codes | ✅ | 驗證碼（敏感） |
+| verification_codes_archive | ✅ | 過期驗證碼歸檔 |
+
+#### 安全設計
+- `service_role`：LINE Bot 後端有完全存取權限（Supabase 內建 bypass RLS）
+- `anon/public`：公開資訊表（clinics/doctors/services/pharmacies/schedules）僅开放 SELECT；醫療敏感表僅限 service_role
+- `queue_status`：開放 anon INSERT（Python 上傳腳本寫入需要）
+
+#### 驗證查詢
+```sql
+SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;
+-- 全部應回傳 t
+```
+
+#### 檔案
+- `database/rls-policies.sql` — 完整 RLS 策略腳本（可重複執行）

@@ -1,17 +1,14 @@
-﻿# generate-schedule-image.ps1
+# generate-schedule-image.ps1
 # 從 Excel 班表生成圖檔（LINE 和 Facebook 共用）
 # 並同步更新 knowledge-base.md
 
 param(
     [Parameter(Mandatory=$false)]
-    [string]$ExcelPath = ""
+    [string]$ExcelPath = "",
+
+    [Parameter(Mandatory=$false)]
+    [string]$OutputPath = ""
 )
-
-Write-Host ""
-Write-Host "📝 提醒：knowledge-base.md 必須由您手動提供新月份的班表內容，並放在檔案最底部。" -ForegroundColor Yellow
-Write-Host ""
-
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 $ErrorActionPreference = "Stop"
 
@@ -36,7 +33,18 @@ if ($ExcelPath -eq "") {
     $excelPath = $ExcelPath
 }
 
+$outputDir = Split-Path $OutputPath -Parent
+if (-not (Test-Path $outputDir)) {
+    New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
+}
 
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "   賜安診所班表圖檔生成工具" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "Excel 檔案：$excelPath" -ForegroundColor Gray
+Write-Host "輸出路徑：$OutputPath" -ForegroundColor Gray
+Write-Host ""
 
 Write-Host "啟動 Excel..." -ForegroundColor Cyan
 $excel = New-Object -ComObject Excel.Application
@@ -52,14 +60,14 @@ try {
     $worksheet = $workbook.Worksheets.Item(1)
     Write-Host "工作表：$($worksheet.Name)" -ForegroundColor Gray
     
-    # 動態找出實際有內容的最後一列（只檢查 A 欄，並往後多看 4 列容納日期列）
+    # 動態找出實際有內容的最後一列（只檢查 A 欄）
     $lastRow = 1
     for ($i = 1; $i -le 35; $i++) {
         $cellValue = $worksheet.Cells.Item($i, 1).Value2
         if ($cellValue -ne $null -and $cellValue.ToString().Trim() -ne "") {
             $lastRow = $i
         }
-}
+    }
     
     # 讀取班表資料
     # Excel 結構（每週 7 列）：
@@ -165,34 +173,7 @@ try {
         $scheduleByWeek += $currentWeek
     }
     Write-Host " OK" -ForegroundColor Green
-
-    # 解析月份並產生月份版檔名
-    $monthMatch = [regex]::Match($monthStr, '(\d+)年(\d+)月')
-    if ($monthMatch.Success) {
-        $yearRoc = [int]$monthMatch.Groups[1].Value
-        $parsedYear = $yearRoc + 1911
-        $parsedMonth = $monthMatch.Groups[2].Value.PadLeft(2,'0')
-    } else {
-        $now = Get-Date
-        $parsedYear = $now.Year
-        $parsedMonth = $now.Month.ToString('D2')
-    }
-    $monthStrFormatted = "$parsedYear-$parsedMonth"
-    $outputFileName = "schedule-full-$monthStrFormatted.jpg"
-    $OutputPath = Join-Path $PSScriptRoot $outputFileName
-    $outputDir = Split-Path $OutputPath -Parent
-    if (-not (Test-Path $outputDir)) {
-        New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
-    }
-
-    Write-Host "========================================" -ForegroundColor Cyan
-    Write-Host "   賜安診所班表圖檔生成工具" -ForegroundColor Cyan
-    Write-Host "========================================" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host "Excel 檔案：$excelPath" -ForegroundColor Gray
-    Write-Host "輸出路徑：$OutputPath" -ForegroundColor Gray
-    Write-Host ""
-
+    
     # 只選取左側班表範圍：A1 到 H{lastRow}（動態範圍，不包含空白列）
     Write-Host "選取班表範圍 (A1:H$lastRow)..." -NoNewline
     $range = $worksheet.Range("A1", "H$lastRow")
@@ -279,4 +260,158 @@ if (Test-Path $OutputPath) {
     exit 1
 }
 
-# 更新 knowledge-base.md 由使用者提供，本腳本不再自動產生
+# 更新 knowledge-base.md
+Write-Host ""
+Write-Host "更新 knowledge-base.md..." -ForegroundColor Cyan
+
+$kbPath = Join-Path $PSScriptRoot "knowledge-base.md"
+if (-not (Test-Path $kbPath)) {
+    Write-Host "  找不到 knowledge-base.md，跳過更新" -ForegroundColor Yellow
+} else {
+    # 解析月份
+    $monthMatch = [regex]::Match($monthStr, '(\d+)年(\d+)月')
+    if ($monthMatch.Success) {
+        $yearNum = $monthMatch.Groups[1].Value
+        $monthNum = $monthMatch.Groups[2].Value
+    } else {
+        $yearNum = $scheduleYear
+        $monthNum = "?"
+        # 若未指定輸出檔案名稱，依月份產生唯一檔名
+        if ([string]::IsNullOrWhiteSpace($OutputPath)) {
+            $OutputPath = "H:\opencode\linebot\schedule-full-${yearNum}-${monthNum}.jpg"
+        }
+    }
+    
+    # 產生 Markdown 格式的班表
+    $scheduleMd = "## ${yearNum}年${monthNum}月門診班表`n`n"
+    
+    # 計算總天數
+    $totalDays = 0
+    foreach ($week in $scheduleByWeek) {
+        $totalDays += $week.Dates.Count
+    }
+    
+    # 星期幾的中文字尾
+    $daySuffix = @("一", "二", "三", "四", "五", "六", "日")
+    
+    # 根據 scheduleByWeek 結構產生 markdown（每週為一個 table）
+    $weekIndex = 0
+    foreach ($week in $scheduleByWeek) {
+        $weekIndex++
+        
+        # 過濾掉空白日期（只取有內容的）
+        $validDates = $week.Dates | Where-Object { $_ -ne "" }
+        
+        if ($validDates.Count -eq 0) { continue }
+        
+        # 格式化日期：6月1日 → 6/1 + 星期
+        $formattedDates = @()
+        $dowIndex = 0
+        foreach ($dateStr in $week.Dates) {
+            if ($dateStr -and $dateStr -ne "") {
+                # 從 "6月1日" 取出 "6/1"
+                if ($dateStr -match '(\d+)月(\d+)日') {
+                    $m = $matches[1]
+                    $d = $matches[2]
+                    $formattedDate = "$m/$d($($daySuffix[$dowIndex]))"
+                } else {
+                    $formattedDate = $dateStr
+                }
+                $formattedDates += $formattedDate
+            }
+            $dowIndex++
+        }
+        
+        # 取得日期範圍（格式化後）
+        $firstDate = $formattedDates[0]
+        $lastDate = $formattedDates[$formattedDates.Count - 1]
+        
+        # 判斷是哪一週
+        $weekName = switch ($weekIndex) {
+            1 { "第一週" }
+            2 { "第二週" }
+            3 { "第三週" }
+            4 { "第四週" }
+            5 { "第五週" }
+            default { "第$weekIndex 週" }
+        }
+        
+        $scheduleMd += "### $weekName（$firstDate-$lastDate）`n"
+        $scheduleMd += "| 日期 | 早診(8-12) | 午診(15-18) | 晚診(18:30-20:30) |`n"
+        $scheduleMd += "|------|-----------|-------------|------------------|`n"
+        
+        # 每天都有一列
+        for ($d = 0; $d -lt $formattedDates.Count; $d++) {
+            $dateStr = $formattedDates[$d]
+            $morning = if ($week.Morning[$d]) { $week.Morning[$d] } else { "" }
+            $afternoon = if ($week.Afternoon[$d]) { $week.Afternoon[$d] } else { "" }
+            $evening = if ($week.Evening[$d]) { $week.Evening[$d] } else { "" }
+            
+            $scheduleMd += "| $dateStr | $morning | $afternoon | $evening |`n"
+        }
+        
+        $scheduleMd += "`n"
+    }
+    
+    # 讀取現有 knowledge-base.md
+    $kbContent = Get-Content $kbPath -Raw -Encoding UTF8
+    $kbLines = $kbContent -split "`n"
+    
+    # 找出班表區間（從 "## {年份}年{月份}月門診班表" 到 "## 附近藥局資訊"）
+    $startIdx = -1
+    $endIdx = -1
+    $targetHeader = "## ${yearNum}年${monthNum}月門診班表"
+    
+    for ($i = 0; $i -lt $kbLines.Count; $i++) {
+        $line = $kbLines[$i].Trim()
+        if ($line -eq $targetHeader) {
+            $startIdx = $i
+        }
+        if ($startIdx -ge 0 -and $line -eq "## 附近藥局資訊") {
+            $endIdx = $i
+            break
+        }
+    }
+    
+    # 如果找到區間，取代它
+    if ($startIdx -ge 0) {
+        # 產生新的班表（格式化為多行）
+        $scheduleLines = $scheduleMd -split "`n"
+        
+        if ($endIdx -gt $startIdx) {
+            # 有結束標記，取代區間
+            $newKbLines = @()
+            for ($i = 0; $i -lt $startIdx; $i++) {
+                $newKbLines += $kbLines[$i]
+            }
+            $newKbLines += $scheduleLines
+            for ($i = $endIdx; $i -lt $kbLines.Count; $i++) {
+                $newKbLines += $kbLines[$i]
+            }
+            $kbContent = $newKbLines -join "`n"
+        } else {
+            # 沒有結束標記（舊班表在最底部），直接取代從 startIdx 到結尾
+            $newKbLines = @()
+            for ($i = 0; $i -lt $startIdx; $i++) {
+                $newKbLines += $kbLines[$i]
+            }
+            $newKbLines += $scheduleLines
+            $kbContent = $newKbLines -join "`n"
+        }
+    } else {
+        # 找不到明確的月份標題，就在 "## 附近藥局資訊" 之前插入
+        $scheduleMd = $scheduleMd + "`n`n"
+        $kbContent = $kbContent -replace "(## 附近藥局資訊)", "$scheduleMd`$1"
+    }
+    
+    # 更新「最後更新」日期
+    $today = Get-Date -Format "yyyy-MM-dd"
+    $kbContent = $kbContent -replace "(# 賜安診所 AI 知識庫[\s\S]*?最後更新：)\d{4}-\d{2}-\d{2}", "`$1$today"
+    
+    # 寫回檔案
+    Set-Content -Path $kbPath -Value $kbContent -Encoding UTF8
+    Write-Host "  ✅ knowledge-base.md 已更新" -ForegroundColor Green
+    Write-Host "    月份：${yearNum}年${monthNum}月" -ForegroundColor Gray
+    Write-Host "    週次：$($scheduleByWeek.Count) 週" -ForegroundColor Gray
+    Write-Host "    總天數：$totalDays 天" -ForegroundColor Gray
+}

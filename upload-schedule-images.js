@@ -7,13 +7,13 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 
 // 從 knowledge-base.md 的最後一個班表標題偵測年月（與 sync-schedule.js 一致）
 const kbContent = fs.readFileSync('./knowledge-base.md', 'utf8');
-const headerMatch = kbContent.match(/^## (\d+)年(\d+)月門診班表/g) || [];
+const headerMatch = kbContent.match(/^## (\d+)年(\d+)月門診班表/gm) || [];
 const lastHeader = headerMatch[headerMatch.length - 1];
 if (!lastHeader) {
   console.error('[ERROR] knowledge-base.md 中找不到班表標題');
   process.exit(1);
 }
-const ym = lastHeader.match(/^## (\d+)年(\d+)月門診班表$/);
+const ym = lastHeader.match(/^## (\d+)年(\d+)月門診班表$/m);
 const westYear = parseInt(ym[1]) + 1911;
 const month = ym[2].padStart(2, '0');
 console.log(`偵測到班表月份：${westYear}-${month}`);
