@@ -1043,3 +1043,43 @@ SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname = 'public' ORDER B
 
 #### 檔案
 - `database/rls-policies.sql` — 完整 RLS 策略腳本（可重複執行）
+
+---
+
+## 📅 2026-09-21 工作進度
+
+### ✅ Git 備份與恢復觀念釐清
+
+#### GitHub 恢復能力確認
+- **可恢復**：Git 追蹤的 123 個檔案（index.js、腳本、knowledge-base.md、班表圖、database/*.sql、AGENTS.md 等），用 `git clone https://github.com/suan2600934/linebot.git` 即可完整還原
+- **不可恢復**（不在 GitHub）：
+  - `.env`（API keys，被 .gitignore 排除）→ 但內容有記錄在 AGENTS.md，可從 GitHub 找回大部分金鑰
+  - `lineid_code/bindings.db`（本地 SQLite 綁定記錄）
+  - `node_modules/`（可 `npm install` 重裝，無妨）
+  - 未 commit 的修改（只存在本機）
+
+#### git push 安全性確認
+- `git push` 是單向上傳，**不會刪除或修改本機任何檔案**
+- 已搜尋整個專案：`.bat`/`.ps1`/`.py`/`.js` 中無任何自動執行 `git push` 或刪除檔案的腳本，push 均為手動觸發
+- 真正會刪本機資料的指令（僅存在於 AGENTS.md 災難復原參考，需手動執行）：
+  - `git reset --hard <commit>`（未 commit 的修改會消失）
+  - `git clean`（清除未追蹤檔案）
+- 流程觀念：修改 → `git add` → `git commit` → `git push`；**未 commit 的內容不會被 push**
+
+### ✅ 2026-09 班表更新推送至 GitHub
+
+| Commit | 說明 |
+|--------|------|
+| `22ee0a2` | 月度更新: 2026-09 班表圖與知識庫，新增 verify-schedule.js |
+
+**推送內容（8 個檔案）**：
+- `MONTHLY_TASKS.md`、`knowledge-base.md`、`run-monthly-schedule.bat`（新增步驟 6 知識庫同步）
+- `schedule-2026-09-week3.png`、`schedule-2026-09-week4.png`、`schedule-full-2026-09.jpg`
+- `schedule-input.txt`（115年9月班表）
+- `verify-schedule.js`（新檔案，班表驗證用）
+
+**排除項目**：`hexdump.txt`（暫存檔，維持未追蹤）
+
+---
+
+**最後更新**：2026-09-21
