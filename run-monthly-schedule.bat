@@ -1,72 +1,105 @@
-﻿@echo off
+@echo off
 chcp 65001 >nul
 setlocal
 
 echo ===============================================
-echo   ?剛”?湔瘚?嚗??銵?
+echo   每月班表更新流程
 echo ===============================================
 echo.
 
-echo [甇仿? 1/5] 鞎潔??唳?隞賜銵典 knowledge-base.md...
-powershell -NoProfile -ExecutionPolicy Bypass -File "append-schedule-section.ps1"
+echo [步驟 1/5] 準備貼上新月份班表到 schedule-input.txt...
+echo.
+echo 1. 開啟 H:\opencode\linebot\schedule-input.txt
+echo 2. 從 Excel 複製本月份 Tab 格式班表貼入（第一行通常為「賜安診所115年9月班表」等）
+echo 3. 儲存檔案（必須是 UTF-8 無 BOM）
+echo 4. 儲存完成後，在此視窗按任意鍵繼續（我會執行 node append-schedule.js）
+pause >nul
+
+echo 正在執行 node append-schedule.js...
+node append-schedule.js
 if errorlevel 1 (
-    echo 鞎潔??剛”憭望?嚗?瑼Ｘ?航炊閮??    pause
+    echo 附加班表失敗，請檢查錯誤訊息
+    pause
     exit /b 1
 )
-choice /C YN /M "甇仿? 1 摰?嚗?衣匱蝥?"
+choice /C YN /M "步驟 1 完成，是否繼續?"
 if errorlevel 2 (
-    echo ?券?????瘚?銝剜迫??    pause
+    echo 已取消更新流程
+    pause
     exit /b 1
 )
 
-echo [甇仿? 2/5] ?Ｙ??冽???..
-powershell -NoProfile -ExecutionPolicy Bypass -File "generate-schedule-image.ps1"
+echo [步驟 2/5] 產生完整月份班表圖片...
+pwsh -NoProfile -ExecutionPolicy Bypass -File "generate-schedule-image.ps1"
 if errorlevel 1 (
-    echo ?Ｙ??冽??仃??隢炎?仿隤方??胯?    pause
+    echo 產生班表圖片失敗，請檢查錯誤訊息
+    pause
     exit /b 1
 )
-choice /C YN /M "甇仿? 2 摰?嚗?衣匱蝥?"
+choice /C YN /M "步驟 2 完成，是否繼續?"
 if errorlevel 2 (
-    echo ?券?????瘚?銝剜迫??    pause
+    echo 已取消更新流程
+    pause
     exit /b 1
 )
 
-echo [甇仿? 3/5] ?Ｙ??勗?...
+echo [步驟 3/5] 產生週別班表圖片...
 node generate-weekly-schedules.js
 if errorlevel 1 (
-    echo ?Ｙ??勗?憭望?嚗?瑼Ｘ?航炊閮??    pause
+    echo 產生週別班表圖片失敗，請檢查錯誤訊息
+    pause
     exit /b 1
 )
-choice /C YN /M "甇仿? 3 摰?嚗?衣匱蝥?"
+choice /C YN /M "步驟 3 完成，是否繼續?"
 if errorlevel 2 (
-    echo ?券?????瘚?銝剜迫??    pause
+    echo 已取消更新流程
+    pause
     exit /b 1
 )
 
-echo [甇仿? 4/5] 銝????Supabase...
+echo [步驟 4/5] 上傳班表圖片至 Supabase...
 node upload-schedule-images.js
 if errorlevel 1 (
-    echo 銝??憭望?嚗?瑼Ｘ?航炊閮??    pause
+    echo 上傳班表圖片失敗，請檢查錯誤訊息
+    pause
     exit /b 1
 )
-choice /C YN /M "甇仿? 4 摰?嚗?衣匱蝥?"
+choice /C YN /M "步驟 4 完成，是否繼續?"
 if errorlevel 2 (
-    echo ?券?????瘚?銝剜迫??    pause
+    echo 已取消更新流程
+    pause
     exit /b 1
 )
 
-echo [甇仿? 5/5] ?郊??鞈??唾??澈...
+echo [步驟 5/5] 同步班表資料至資料庫...
 node sync-schedule.js
 if errorlevel 1 (
-    echo ?郊??鞈?憭望?嚗?瑼Ｘ?航炊閮??    pause
+    echo 同步班表資料失敗，請檢查錯誤訊息
+    pause
     exit /b 1
 )
-choice /C YN /M "甇仿? 5 摰?嚗?衣???"
+choice /C YN /M "步驟 5 完成，是否繼續?"
 if errorlevel 2 (
-    echo ?券?????瘚?銝剜迫??    pause
+    echo 已取消更新流程
+    pause
+    exit /b 1
+)
+
+echo [步驟 6/6] 知識庫同步（供 AI 使用）...
+node sync-knowledge-base.js
+if errorlevel 1 (
+    echo 知識庫同步失敗，請檢查錯誤訊息
+    pause
+    exit /b 1
+)
+choice /C YN /M "步驟 6 完成，是否結束?"
+if errorlevel 2 (
+    echo 已取消更新流程
+    pause
     exit /b 1
 )
 
 echo ===============================================
-echo   ?剛”?湔瘚??券摰?嚗?echo ===============================================
+echo   每月班表更新流程完成！
+echo ===============================================
 pause
