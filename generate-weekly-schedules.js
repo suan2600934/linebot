@@ -25,6 +25,7 @@ const DOCTOR_COLORS = {
 };
 
 const WEEK_LABELS = ['一', '二', '三', '四', '五', '六'];
+const WEEKDAY_NAMES = ['日', '一', '二', '三', '四', '五', '六'];
 
 function parseKnowledgeBase(content) {
   const lines = content.split(/\r?\n/);
@@ -111,6 +112,14 @@ function parseMarkdownTableFormat(lines, year, month) {
   }
 
   return { year, month, weeks };
+}
+
+function getWeekdayLabel(dateStr, westYear) {
+  const m = dateStr.match(/(\d+)月(\d+)日/);
+  if (!m) return '';
+  const d = new Date(westYear, Number(m[1]) - 1, Number(m[2]));
+  if (isNaN(d.getTime())) return '';
+  return WEEKDAY_NAMES[d.getDay()];
 }
 
 function parseTabFormat(lines, year, month) {
@@ -201,29 +210,38 @@ function drawWeekSchedule(weekData, year, month, weekIndex) {
   ctx.textBaseline = 'middle';
   ctx.fillText(`第${WEEK_LABELS[weekIndex]}週`, headerWidth / 2, headerY + headerHeight / 2);
 
-  const dayWidth = (OUTPUT_WIDTH - headerWidth) / 7;
-  const dateRowHeight = 50;
-  const shiftRowHeight = 80;
-  const dateY = headerY + headerHeight + 5;
-  const shiftsY = dateY + dateRowHeight + 5;
+const westYear = 1911 + Number(year);
+   const dayWidth = (OUTPUT_WIDTH - headerWidth) / 7;
+   const dateRowHeight = 50;
+   const shiftRowHeight = 80;
+   const dateY = headerY + headerHeight + 5;
+   const shiftsY = dateY + dateRowHeight + 5;
 
-  for (let i = 0; i < 7; i++) {
-    const x = headerWidth + i * dayWidth;
-    const dateStr = weekData.dates[i] || '';
+   for (let i = 0; i < 7; i++) {
+     const x = headerWidth + i * dayWidth;
+     const dateStr = weekData.dates[i] || '';
 
-    ctx.fillStyle = COLORS.dateBg;
-    ctx.fillRect(x, dateY, dayWidth, dateRowHeight);
+     ctx.fillStyle = COLORS.dateBg;
+     ctx.fillRect(x, dateY, dayWidth, dateRowHeight);
 
-    ctx.strokeStyle = COLORS.gridLine;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x, dateY, dayWidth, dateRowHeight);
+     ctx.strokeStyle = COLORS.gridLine;
+     ctx.lineWidth = 1;
+     ctx.strokeRect(x, dateY, dayWidth, dateRowHeight);
 
-    ctx.fillStyle = COLORS.dateText;
-    ctx.font = '20px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(dateStr, x + dayWidth / 2, dateY + dateRowHeight / 2);
-  }
+     const weekday = getWeekdayLabel(dateStr, westYear);
+     const displayText = weekday ? `${dateStr}（${weekday}）` : dateStr;
+
+     ctx.fillStyle = COLORS.dateText;
+     let fontSize = 20;
+     ctx.font = `${fontSize}px sans-serif`;
+     while (ctx.measureText(displayText).width > dayWidth - 8 && fontSize > 12) {
+       fontSize -= 1;
+       ctx.font = `${fontSize}px sans-serif`;
+     }
+     ctx.textAlign = 'center';
+     ctx.textBaseline = 'middle';
+     ctx.fillText(displayText, x + dayWidth / 2, dateY + dateRowHeight / 2);
+   }
 
   const shifts = [
     { data: weekData.morning, bgColor: COLORS.morningBg },

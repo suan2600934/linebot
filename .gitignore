@@ -6,3 +6,10 @@ dist/
 build/
 .github/
 lineid_code/bindings.db
+
+# 暫存/診斷檔
+hexdump.txt
+
+# 班表圖檔（正式檔案存在 Supabase Storage，本機為暫存產物）
+schedule-*.png
+schedule-full-*.jpg

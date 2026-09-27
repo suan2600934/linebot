@@ -1,5 +1,73 @@
 # LINE Bot 醫療資訊系統 - 專案進度記錄
 
+## 📅 2026-09-27 工作進度（最新）
+
+### ✅ 修正班表同步每月產生重複資料的 Bug
+
+#### 症狀
+`verify-schedule.js` 驗證時報錯：
+```
+[ERROR] 發現重複的 week_number：1
+這會導致 getThisWeekSchedule() 因 .single() 拋錯而顯示「目前無法取得班表資訊」
+```
+
+#### 真正根因（不是 knowledge-base.md 有重複）
+`sync-schedule.js` 的**解析範圍**與**年月來源**不一致：
+
+- 解析迴圈（原第 16-70 行）掃描**整份** `knowledge-base.md` 的 `lines`
+- 但年月只取**最後一個** `## XX年X月門診班表` 標題
+
+由於 `append-schedule.js` 是**累積式**附加、`knowledge-base.md` 會保留所有歷史月份，
+所以舊月份區塊的週別也被一併收進 `weeks` 陣列：
+
+```
+knowledge-base.md 同時含 9月區塊(5週) + 10月區塊(5週) = 10 週
+→ 但 year/month 全部寫成 2026/10
+→ schedules 表 10 筆，week_number 1~5 各 2 筆
+```
+
+**因此每個月必然發生**（上個月的區塊永遠留在檔案裡）。
+ID 分布可佐證：`147-151 = 9月資料`、`152-156 = 10月資料`。
+
+#### 連帶發現：資料庫當時是錯的
+當時 `schedules` 表的 2026/10 裝的是 **9 月班表**（週1 顯示「週二周、週三鄭…」），
+LINE Bot 對外顯示的 10 月班表是錯的。修正後週1 才正確顯示
+「週四周、週五周、週六鄭、週日鄭」（對應 10/1 為星期四）。
+
+班表**圖片本來就是對的** —— `generate-weekly-schedules.js` 早已正確限縮到最後一個區塊。
+
+#### 修改內容
+`sync-schedule.js`：
+- 先算出最後一個 `## XX年X月門診班表` 的行範圍（`blockStart` / `blockEnd`），解析迴圈只在該範圍內運作
+- 加入週標題去重 + `week_number` 去重（保險機制）
+- 週號解析失敗（`cnToNum` 查不到）時跳過而非寫入 `undefined`
+- 清除舊資料失敗時 `process.exit(1)`，不再靜默繼續
+- 結尾印出實際同步週數
+
+#### 驗證結果
+| 項目 | 修正前 | 修正後 |
+|------|--------|--------|
+| 解析到週數 | 10 週 | 5 週 |
+| schedules 表筆數 | 10（week 1-5 各 2 筆）| 5（無重複）|
+| 連續執行兩次 | — | 仍為 5 筆（冪等）|
+| 週1 內容 | 週二周、週三鄭…（9月）| 週四周、週五周…（10月）|
+
+#### 其他修正
+- `database/schedules-unique-constraint.sql`（新增）：`UNIQUE (year, month, week_number)` 約束
+  + 清除既有重複資料的 SQL。**需手動在 Supabase Dashboard → SQL Editor 執行**
+- `run-monthly-schedule.bat`：步驟編號 `1/5`～`5/5` → `1/6`～`6/6`
+- `run-monthly-schedule.ps1`：修正 `-ForegroundColor Cy an` 拼字錯誤（會導致步驟 2 中斷）
+  + 補上缺少的步驟 6（`sync-knowledge-base.js`）+ 步驟編號改為 `/6`
+
+#### 重要觀念
+**`knowledge-base.md` 可以並應該保留所有歷史月份班表**（歷史備份）。
+修正後 `sync-schedule.js` 只會讀取最後一個月份區塊，舊資料留在檔案中但被忽略，
+兩者職責分離：
+- `knowledge-base.md` → 永久歷史檔案（人類可讀、備份用、AI 知識庫來源）
+- `schedules` 表 → 僅當月份資料（LINE Bot 即時查詢用，每次同步先刪除該年月再寫入）
+
+---
+
 ## 📋 專案概述
 
 **專案名稱**：LINE Bot 醫療資訊系統（藥局/診所查詢）
@@ -1080,6 +1148,23 @@ SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname = 'public' ORDER B
 
 **排除項目**：`hexdump.txt`（暫存檔，維持未追蹤）
 
----
+--- 
 
-**最後更新**：2026-09-21
+### ✅ 2026-09-23 班表圖增強：加入星期幾顯示
+
+在 `generate-weekly-schedules.js` 中修改：
+- 添加 `WEEKDAY_NAMES` 常量與 `getWeekdayLabel()` 輔助函式
+- 在繪製日期時，根據「9月1日」等格式計算星期幾（民國 115 年 = 西元 2026）
+- 日期顯示格式變為「9月1日（二）」，字體大小自動縮小以適應單元格寬度
+- 已重新生成 9 月份班表圖（schedule-2026-09-week1.png ~ week5.png）
+
+--- 
+
+**最後更新**：2026-09-23
+### ✅ 2026-09-23 工作進度
+
+- 已修改 generate-weekly-schedules.js，在日期旁邊加上星期幾顯示（例如：9月1日（二））。
+- 已重新生成 9 月份班表圖（schedule-2026-09-week1.png ~ week5.png）。
+- 已將 9 月份班表圖上傳至 Supabase Storage（含 schedule-full-2026-09.jpg）。
+
+

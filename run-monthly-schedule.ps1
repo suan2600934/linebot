@@ -15,7 +15,7 @@ Write-Host " 班表更新流程（含互動提示）" -ForegroundColor Cyan
 Write-Host "===============================================" -ForegroundColor Cyan
 Write-Host ""
 
-Write-Host "[步驟 1/5] 貼上新月份班表到 knowledge-base.md..." -ForegroundColor Cyan
+Write-Host "[步驟 1/6] 貼上新月份班表到 knowledge-base.md..." -ForegroundColor Cyan
 Write-Host ""
 Write-Host "請開啟 schedule-input.txt，從 Excel 複製 Tab 格式班表貼入" -ForegroundColor Yellow
 Write-Host "（第一行通常為：賜安診所115年X月班表）" -ForegroundColor Gray
@@ -42,7 +42,7 @@ if (-not (Ask-Continue "步驟 1 完成（班表已附加到 knowledge-base.md�
 }
 
 Write-Host ""
-Write-Host "[步驟 2/5] 產生全月圖..." -ForegroundColor Cy an
+Write-Host "[步驟 2/6] 產生全月圖..." -ForegroundColor Cyan
 Write-Host "正在開啟 PowerShell 7 視窗執行 generate-schedule-image.ps1..." -ForegroundColor Yellow
 Write-Host "請在新的視窗中等待腳本執行完畢，關閉後回到這裡繼續。" -ForegroundColor Gray
 Write-Host ""
@@ -56,7 +56,7 @@ if (-not (Ask-Continue "步驟 2 完成（全月圖已產生），是否繼續�
 }
 
 Write-Host ""
-Write-Host "[步驟 3/5] 產生週圖..." -ForegroundColor Cyan
+Write-Host "[步驟 3/6] 產生週圖..." -ForegroundColor Cyan
 node .\generate-weekly-schedules.js
 if ($LASTEXITCODE -ne 0) {
   Write-Host ""
@@ -70,7 +70,7 @@ if (-not (Ask-Continue "步驟 3 完成（週圖已產生），是否繼續到�
 }
 
 Write-Host ""
-Write-Host "[步驟 4/5] 上傳圖檔至 Supabase..." -ForegroundColor Cyan
+Write-Host "[步驟 4/6] 上傳圖檔至 Supabase..." -ForegroundColor Cyan
 node .\upload-schedule-images.js
 if ($LASTEXITCODE -ne 0) {
   Write-Host ""
@@ -84,7 +84,7 @@ if (-not (Ask-Continue "步驟 4 完成（圖檔已上傳），是否繼續到�
 }
 
 Write-Host ""
-Write-Host "[步驟 5/5] 同步排程資料至資料庫..." -ForegroundColor Cyan
+Write-Host "[步驟 5/6] 同步排程資料至資料庫..." -ForegroundColor Cyan
 node .\sync-schedule.js
 if ($LASTEXITCODE -ne 0) {
   Write-Host ""
@@ -92,7 +92,21 @@ if ($LASTEXITCODE -ne 0) {
   exit 1
 }
 Write-Host ""
-if (-not (Ask-Continue "步驟 5 完成，是否結束？")) {
+if (-not (Ask-Continue "步驟 5 完成（班表已同步至資料庫），是否繼續到步驟 6？")) {
+  Write-Host "已中止流程。" -ForegroundColor Yellow
+  exit 1
+}
+
+Write-Host ""
+Write-Host "[步驟 6/6] 知識庫同步（供 AI 使用）..." -ForegroundColor Cyan
+node .\sync-knowledge-base.js
+if ($LASTEXITCODE -ne 0) {
+  Write-Host ""
+  Write-Host "❌ 知識庫同步失敗，請檢查錯誤訊息。" -ForegroundColor Red
+  exit 1
+}
+Write-Host ""
+if (-not (Ask-Continue "步驟 6 完成，是否結束？")) {
   Write-Host "已中止流程。" -ForegroundColor Yellow
   exit 1
 }

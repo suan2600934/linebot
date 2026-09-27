@@ -7,7 +7,7 @@ echo   每月班表更新流程
 echo ===============================================
 echo.
 
-echo [步驟 1/5] 準備貼上新月份班表到 schedule-input.txt...
+echo [步驟 1/6] 準備貼上新月份班表到 schedule-input.txt...
 echo.
 echo 1. 開啟 H:\opencode\linebot\schedule-input.txt
 echo 2. 從 Excel 複製本月份 Tab 格式班表貼入（第一行通常為「賜安診所115年9月班表」等）
@@ -29,7 +29,7 @@ if errorlevel 2 (
     exit /b 1
 )
 
-echo [步驟 2/5] 產生完整月份班表圖片...
+echo [步驟 2/6] 產生完整月份班表圖片...
 pwsh -NoProfile -ExecutionPolicy Bypass -File "generate-schedule-image.ps1"
 if errorlevel 1 (
     echo 產生班表圖片失敗，請檢查錯誤訊息
@@ -43,7 +43,7 @@ if errorlevel 2 (
     exit /b 1
 )
 
-echo [步驟 3/5] 產生週別班表圖片...
+echo [步驟 3/6] 產生週別班表圖片...
 node generate-weekly-schedules.js
 if errorlevel 1 (
     echo 產生週別班表圖片失敗，請檢查錯誤訊息
@@ -57,7 +57,7 @@ if errorlevel 2 (
     exit /b 1
 )
 
-echo [步驟 4/5] 上傳班表圖片至 Supabase...
+echo [步驟 4/6] 上傳班表圖片至 Supabase...
 node upload-schedule-images.js
 if errorlevel 1 (
     echo 上傳班表圖片失敗，請檢查錯誤訊息
@@ -71,7 +71,7 @@ if errorlevel 2 (
     exit /b 1
 )
 
-echo [步驟 5/5] 同步班表資料至資料庫...
+echo [步驟 5/6] 同步班表資料至資料庫...
 node sync-schedule.js
 if errorlevel 1 (
     echo 同步班表資料失敗，請檢查錯誤訊息
